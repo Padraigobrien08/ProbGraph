@@ -4,7 +4,8 @@ Discrete Bayesian networks built from first principles: DAGs, conditional probab
 tables, joint factorisation and ancestral sampling. No graph or Bayesian-network
 libraries are used.
 
-**Status:** Milestone 1, units M1.1 (`DiscreteVariable`, `DAG`) and M1.2 (`TabularCPD`) are done.
+**Status:** Milestone 1, units M1.1 (`DiscreteVariable`, `DAG`), M1.2 (`TabularCPD`) and M1.3
+(`BayesianNetwork`: structural validation and joint probability) are done.
 
 ```bash
 uv venv && uv pip install -e ".[dev]"
