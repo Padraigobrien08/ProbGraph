@@ -126,6 +126,15 @@ class BayesianNetwork:
             probability *= cpd.probability(assignment[name], given)
         return probability
 
+    def sample(self, n: int, seed: int | None = None) -> list[dict[str, str]]:
+        """Draw ``n`` i.i.d. joint samples by ancestral sampling.
+
+        This is equivalent to ``AncestralSampler(self, seed).sample(n)``.
+        """
+        from probgraph.sampling import AncestralSampler  # local import avoids an import cycle
+
+        return AncestralSampler(self, seed=seed).sample(n)
+
     # -- internals ----------------------------------------------------------
 
     def _validated_order(self) -> tuple[str, ...]:
