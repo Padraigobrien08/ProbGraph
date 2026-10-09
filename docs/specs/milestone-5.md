@@ -1,4 +1,4 @@
-# ProbGraph — Milestone 5 Technical Specification (v1.2)
+# ProbGraph — Milestone 5 Technical Specification (v1.3)
 
 **Milestone:** Temporal models: hidden Markov models, forward–backward, max-product (Viterbi and
 MPE), and Baum–Welch.
@@ -8,6 +8,7 @@ MPE), and Baum–Welch.
 models found linear (scaled) arithmetic wrong by up to 1.0 (forward_backward.md §4).
 **v1.2 (M5.6):** W6 corrected: equal emission rows are a fixed point only when π is also stationary
 for A (baum_welch.md Theorem 1); W1 accounts for M4 filling in counts for missing observations.
+**v1.3 (M5.8):** the DBN interface is derived from the transition CPDs rather than passed in.
 **Primary objective:** Model sequences with a hidden Markov chain. Compute filtered, smoothed and
 predicted beliefs, the most probable hidden path, and the parameters from unlabelled sequences.
 Prove that each algorithm is a known one from Milestones 2–4 specialised to a chain, and test it
@@ -174,8 +175,13 @@ class BaumWelchResult:
 ### 3.5 *(optional)* Dynamic Bayesian networks
 
 ```python
+def previous(variable: DiscreteVariable) -> DiscreteVariable: ...   # the copy "X[t-1]", a transition-CPD parent
+
 class DynamicBayesianNetwork:
-    def __init__(self, initial: BayesianNetwork, transition: BayesianNetwork, interface: ...) -> None: ...  # a 2-TBN
+    def __init__(self, initial: BayesianNetwork, transition: Sequence[TabularCPD]) -> None: ...  # a 2-TBN
+    @classmethod
+    def from_hmm(cls, model: HiddenMarkovModel) -> DynamicBayesianNetwork: ...
+    interface: tuple[str, ...]          # derived: template variables with a child in the next slice
     def unroll(self, length: int) -> BayesianNetwork: ...
 ```
 

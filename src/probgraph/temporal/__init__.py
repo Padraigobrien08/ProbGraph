@@ -6,6 +6,7 @@ from probgraph.temporal.baum_welch import (
     HMMCounts,
     supervised_estimate,
 )
+from probgraph.temporal.dbn import DynamicBayesianNetwork, previous
 from probgraph.temporal.forward_backward import ForwardBackward
 from probgraph.temporal.hmm import HiddenMarkovModel
 from probgraph.temporal.viterbi import posterior_decode, viterbi
@@ -13,10 +14,12 @@ from probgraph.temporal.viterbi import posterior_decode, viterbi
 __all__ = [
     "BaumWelch",
     "BaumWelchResult",
+    "DynamicBayesianNetwork",
     "ForwardBackward",
     "HMMCounts",
     "HiddenMarkovModel",
     "posterior_decode",
+    "previous",
     "supervised_estimate",
     "viterbi",
 ]
