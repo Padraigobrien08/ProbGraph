@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.4.0 — Milestone 4: learning from data
+
+### Added
+- `probgraph.learning`, a new subpackage.
+- `Dataset`: validated rows with `None` as the only missing value, stored as integer
+  codes. Exact `counts`, `from_samples`, and `with_missing` for MCAR experiments.
+- `log_likelihood`: the observed-data log-likelihood, using log-space variable elimination
+  for incomplete rows (rows with the same values share one computation).
+- `maximum_likelihood`: count ratios. Unseen parent configurations raise and are named;
+  `unseen="uniform"` is an explicit opt-in.
+- `DirichletPrior` (`uniform`, `bdeu`, `explicit`) and `bayesian_estimate` (posterior mean
+  by default, or MAP when every pseudocount is at least 1).
+- `log_marginal_likelihood`: the Bayesian score of a structure, computed with `lgamma`.
+- `ExpectationMaximisation` and `EMResult`. The E-step uses one junction tree per
+  distinct pattern of observed values. The M-step is the MLE, or the posterior mean or
+  MAP with a prior. Every run reports its full `log_likelihood` and `log_objective`
+  history. Also `expected_counts`.
+- `bic`, `family_scores` and `score_structures` (BIC and BDeu).
+- Proofs P14–P17 in `docs/mathematics/`, and `examples/learning_traffic.py`.
+
+### Notes
+- With a prior, EM's posterior-mean M-step is MAP-EM for $\mathrm{Dir}(\alpha+1)$. The
+  log-likelihood itself may then decrease. `log_objective` is the quantity guaranteed
+  not to (`em.md` §7).
+- `with_missing(seed=s)` draws from its own random stream. If it used the same stream as
+  `AncestralSampler(seed=s)`, which draws the same uniforms, the mask would depend on
+  the values and would not be MCAR.
+- EM assumes values are missing at random. The tests show it unbiased under MAR and
+  biased under MNAR.
+
 ## 0.3.0 — Milestone 3: message passing
 
 ### Added

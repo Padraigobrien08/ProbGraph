@@ -40,6 +40,7 @@ jobs:
           .venv/bin/python examples/rain_accident_traffic.py
           .venv/bin/python examples/late_for_work.py
           .venv/bin/python examples/misconception.py
+          .venv/bin/python examples/learning_traffic.py
 
   oldest-dependencies:
     name: Oldest supported dependencies (Python 3.11)

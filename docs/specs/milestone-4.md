@@ -293,15 +293,15 @@ New files: `docs/mathematics/likelihood.md`, `dirichlet.md`, `em.md`, and `model
 
 ## 7. Acceptance criteria for Milestone 4
 
-- [ ] `Dataset` validates states, represents missing values only as `None`, and its counts are exact.
-- [ ] The MLE matches F1 exactly, and no valid perturbation increases the likelihood.
-- [ ] Learning from sampled data recovers the generating parameters within proven bounds.
-- [ ] Dirichlet posterior means and MAP match their closed forms; $\alpha\to0$ recovers the MLE.
-- [ ] The marginal likelihood's gamma formula equals the product of sequential predictives; BDeu is score-equivalent.
-- [ ] EM's first iteration on F3 matches the exact fractions; the observed-data likelihood never decreases.
-- [ ] EM agrees with brute-force EM on small models; the symmetric fixed point and its escape are demonstrated.
-- [ ] Proofs P14–P16 (and P17 if task 8 is done) are documented.
-- [ ] `v0.4.0` installs fresh and passes CI.
+- [x] `Dataset` validates states, represents missing values only as `None`, and its counts are exact.
+- [x] The MLE matches F1 exactly, and no valid perturbation increases the likelihood.
+- [x] Learning from sampled data recovers the generating parameters within proven bounds.
+- [x] Dirichlet posterior means and MAP match their closed forms; $\alpha\to0$ recovers the MLE.
+- [x] The marginal likelihood's gamma formula equals the product of sequential predictives; BDeu is score-equivalent.
+- [x] EM's first iteration on F3 matches the exact fractions; the observed-data likelihood never decreases.
+- [x] EM agrees with brute-force EM on small models; the symmetric fixed point and its escape are demonstrated.
+- [x] Proofs P14–P16 (and P17 if task 8 is done) are documented.
+- [ ] `v0.4.0` installs fresh and passes CI. *(Ticked when the tagged commit's CI run passes.)*
 
 ---
 

@@ -2,15 +2,17 @@
 
 Discrete probabilistic graphical models built from first principles: Bayesian
 networks and Markov networks, factorisation, sampling, d-separation, variable
-elimination, clique trees and message passing, all computed in log space. No graph or
+elimination, clique trees and message passing, all computed in log space, and learning
+their parameters and structure from data, including data with missing values. No graph or
 graphical-model library is used, and NumPy is used only for array storage and
 arithmetic. Every algorithm comes with a written mathematical justification and
 with tests designed to fail if the implementation is subtly wrong.
 
-**Status:** `v0.3.0`, which completes Milestone 3: message passing (Markov networks,
-clique trees, belief propagation, log-space numerics). Earlier releases: `v0.2.0`
-(Milestone 2: conditional independence, evidence and exact inference) and `v0.1.0`
-(Milestone 1: representation, factorisation and sampling).
+**Status:** `v0.4.0`, which completes Milestone 4: learning from data (maximum
+likelihood, Dirichlet priors and the Bayesian score, EM for missing values, and structure
+scores). Earlier releases: `v0.3.0` (Milestone 3: message passing), `v0.2.0` (Milestone 2:
+conditional independence, evidence and exact inference) and `v0.1.0` (Milestone 1:
+representation, factorisation and sampling).
 
 > **Changed in v0.3.0:** `VariableElimination` now computes in log space by default. In
 > v0.2.0, enough evidence to push P(e) below float64's range (about 10⁻³²⁴) could make it
@@ -79,7 +81,27 @@ mn.partition_function()  # 46.0
 mn.query(["A"]).value({"A": "1"})  # 11/46 ≈ 0.239
 ```
 
-Three complete walkthroughs:
+Learning the parameters back from data, with or without missing values:
+
+```python
+from probgraph.learning import Dataset, DirichletPrior, ExpectationMaximisation
+from probgraph.learning import bayesian_estimate, bic, maximum_likelihood
+
+data = Dataset.from_samples(model, model.sample(5000, seed=1))
+learned = maximum_likelihood(model, data)  # uses the graph only; the CPDs come from counts
+learned.cpds["Traffic"].probability("yes", {"Rain": "no", "Accident": "yes"})  # 0.684 (truth 0.70)
+
+small = Dataset.from_samples(model, model.sample(30, seed=1))
+# Rain=yes with Accident=yes never occurs in 30 rows: the MLE raises, and Laplace gives the prior mean.
+bayesian_estimate(model, small, DirichletPrior.uniform(1.0))  # that column becomes [0.5, 0.5]
+
+result = ExpectationMaximisation(model, data.with_missing(0.3, seed=2)).run(seed=0)
+result.converged, result.iterations  # (True, 23); result.log_likelihood never decreases
+
+bic(model, data) > bic(BayesianNetwork(model.variables, [("Rain", "Traffic")]), data)  # True
+```
+
+Four complete walkthroughs:
 
 - [`examples/rain_accident_traffic.py`](examples/rain_accident_traffic.py) (M1): the
   exact joint table, sampled frequencies compared with exact probabilities, and
@@ -90,6 +112,9 @@ Three complete walkthroughs:
 - [`examples/misconception.py`](examples/misconception.py) (M3): a Markov network's
   partition function, triangulating a 4-cycle, one calibration for every marginal,
   loopy BP converging to the wrong answer, and why log space matters.
+- [`examples/learning_traffic.py`](examples/learning_traffic.py) (M4): learning the
+  late-for-work network back from samples, smoothing small samples, EM with 30% of values
+  missing, and ranking structures by BIC.
 
 ## API
 
@@ -110,6 +135,12 @@ Three complete walkthroughs:
 | `CliqueTree.from_elimination(graph, order)` | a junction tree | running intersection property; the cliques are exactly the maximal cliques; maximum-weight spanning tree |
 | `JunctionTree(model, evidence)` | every $P(x\mid e)$ at once | Shafer–Shenoy in log space; $2(k-1)$ messages; exact; $\log P(e)$ for free; cross-clique queries refused |
 | `LoopyBeliefPropagation(model)` | approximate marginals | exact on trees; on cycles it may converge to wrong beliefs or oscillate; `converged` is reported honestly |
+| `learning.Dataset(variables, rows)` | observations, `None` for missing | validated once; immutable; exact `counts`; `with_missing` is MCAR, even with the sampler's seed |
+| `learning.maximum_likelihood(structure, data)` | $\hat\theta=N(x,u)/N(u)$ | exact count ratios; unseen parent configurations raise unless `unseen="uniform"`; complete data only |
+| `learning.bayesian_estimate(structure, data, prior)` | the Dirichlet posterior mean or MAP | `DirichletPrior.uniform`, `bdeu` or `explicit`; MAP refused when any $\alpha<1$ |
+| `learning.log_marginal_likelihood(structure, data, prior)` | $\log P(D\mid G)$ | the gamma closed form, equal to sequential prediction; BDeu is score-equivalent |
+| `learning.ExpectationMaximisation(structure, data, prior)` | parameters from incomplete data | E-step by junction tree, one per distinct observed pattern; the objective never decreases; the full history is reported |
+| `learning.bic`, `family_scores`, `score_structures` | structure scores | BIC and BDeu; one term per family; equivalent structures tie |
 
 All library errors derive from `probgraph.exceptions.ProbGraphError`.
 
@@ -135,9 +166,13 @@ Each implementation step is justified in [`docs/mathematics/`](docs/mathematics/
 | [clique_trees.md](docs/mathematics/clique_trees.md) | **P11**: triangulation, perfect elimination orderings, maximum cardinality search, maximal cliques; clique trees exist exactly for chordal graphs; junction trees are the maximum-weight spanning trees |
 | [message_passing.md](docs/mathematics/message_passing.md) | **P12**: Shafer–Shenoy messages as partial eliminations; beliefs are marginals; evidence; measured cost against variable elimination |
 | [loopy_bp.md](docs/mathematics/loopy_bp.md) | **P13**: exact on trees; double counting on cycles; damping keeps the fixed points; convergence is not accuracy |
+| [likelihood.md](docs/mathematics/likelihood.md) | **P14**: counts are sufficient; the likelihood decomposes by column; the MLE by Gibbs' inequality; Bernstein bounds; misspecification; Wilks |
+| [dirichlet.md](docs/mathematics/dirichlet.md) | **P15**: conjugacy; posterior mean and MAP; the marginal likelihood as a ratio of normalising constants, equal to sequential prediction; BDeu score equivalence |
+| [em.md](docs/mathematics/em.md) | **P16**: MAR; Jensen's bound; expected counts; monotonicity; fixed points are stationary; MAP-EM; the symmetric latent-class fixed point |
+| [model_selection.md](docs/mathematics/model_selection.md) | **P17**: BIC as a Laplace approximation; decomposability; score equivalence by the entropy chain rule; consistency via Wilks |
 
-The specifications are in [`docs/specs/`](docs/specs/): [Milestone 2](docs/specs/milestone-2.md) and
-[Milestone 3](docs/specs/milestone-3.md).
+The specifications are in [`docs/specs/`](docs/specs/): [Milestone 2](docs/specs/milestone-2.md),
+[Milestone 3](docs/specs/milestone-3.md) and [Milestone 4](docs/specs/milestone-4.md).
 
 ## Milestone 1 acceptance
 
@@ -195,15 +230,36 @@ was found to *silently* return wrong posteriors, not merely raise. Variable elim
 therefore defaults to log space. And the cost claim C7 holds only when evidence is
 downstream.
 
+## Milestone 4 acceptance
+
+| Criterion | Evidence |
+|---|---|
+| `Dataset` validates states, uses only `None` for missing, and counts exactly | `test_dataset.py` (counts against brute force on random data; MCAR rates within Bernstein bounds, independent of the values) |
+| The MLE matches F1 exactly, and no valid perturbation increases the likelihood | `test_likelihood.py` (exact fractions; random perturbations inside the simplex) |
+| Learning from sampled data recovers the generating parameters within proven bounds | `test_recovery.py` (F2; every entry within its Bernstein bound; the $1/\sqrt{N(u)}$ rate; Wilks' $\chi^2_d$) |
+| Dirichlet posterior means and MAP match their closed forms; $\alpha\to0$ gives the MLE | `test_dirichlet.py` (quadrature oracles; tallies; the convex combination) |
+| The gamma formula equals sequential prediction; BDeu is score-equivalent | `test_marginal_likelihood.py` (F5; random orderings; summing to 1 over all datasets; covered-edge reversals under BDeu and BDe) |
+| EM's first iteration on F3 is exact; the likelihood never decreases | `test_em.py` (23/48, 18/23, 1/5; expected counts against enumeration; monotone objectives with and without priors) |
+| EM agrees with brute-force EM; the symmetric fixed point and its escape are shown | `test_em_oracles.py` (iteration by iteration; Theorem 2's formula; label switching; MCAR recovery; MAR vs MNAR) |
+| Proofs P14–P17 are documented | `docs/mathematics/` (the table above) |
+| `v0.4.0` installs fresh and passes CI | `.github/workflows/ci.yml` (unchanged gates, plus all four examples) |
+
+Testing during M4 corrected the spec twice (now v1.2): with a prior, EM's posterior-mean
+step does not make the log-likelihood monotone (it makes a shifted log-posterior monotone),
+and BIC's equal-parameter-count condition always holds for equivalent structures. It also
+found that `with_missing` and `AncestralSampler` with the same seed shared their uniforms,
+so the "MCAR" mask depended on the values. That is fixed.
+
 ## Development
 
 ```bash
-.venv/bin/pytest                      # 2853 tests, about 15 s
+.venv/bin/pytest                      # 3611 tests, about 40 s
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/mypy                        # strict mode, src/ only
 .venv/bin/python examples/rain_accident_traffic.py
 .venv/bin/python examples/late_for_work.py
 .venv/bin/python examples/misconception.py
+.venv/bin/python examples/learning_traffic.py
 ```
 
 ## Scope and limitations
@@ -212,15 +268,18 @@ Out of scope so far:
 - continuous variables;
 - MAP / max-product inference;
 - MCMC (Gibbs sampling);
-- learning parameters or structure from data.
+- structure *search* (the scores are here; searching over graphs is not);
+- learning Markov network parameters;
+- data missing not at random (EM assumes MAR).
 
 Known limitations:
 - `JunctionTree.query` answers joint queries only over variables that share a clique. Use
   `VariableElimination` for the rest.
 - Loopy belief propagation has no accuracy guarantee on graphs with cycles. The tests show it
   converging to badly wrong beliefs, and oscillating forever without damping.
-- Choosing a greedy elimination order is slow for graphs with a very high-degree variable
-  (min-fill scoring is quadratic in the degree). Bayesian networks avoid the worst case.
+- EM finds a local optimum that depends on its start; for latent variables, the classes are
+  identified only up to relabelling. Each iteration builds one junction tree per distinct
+  pattern of observed values, so it is slow when almost every row is different.
 - Exhaustive enumeration appears only as a test oracle.
 
 ## Licence
