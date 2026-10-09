@@ -139,6 +139,30 @@ class DAG:
                 stack.extend(self._parents[node] - result)
         return result
 
+    def d_separated(self, xs: Iterable[str], ys: Iterable[str], given: Iterable[str] = ()) -> bool:
+        """True if X and Y are d-separated by Z: no trail from X to Y is active given Z.
+
+        X, Y and Z must be known and pairwise disjoint, and X and Y non-empty.
+        See ``docs/mathematics/d_separation.md``.
+        """
+        x, y, z = (self._node_set(group) for group in (xs, ys, given))
+        if not x or not y:
+            raise ValidationError("d_separated() needs non-empty xs and ys.")
+        if x & y or x & z or y & z:
+            raise ValidationError("d_separated() needs disjoint xs, ys and given.")
+        return not (self._bayes_ball(x, z) & y)
+
+    def d_connected_nodes(self, x: str, given: Iterable[str] = ()) -> set[str]:
+        """Every node joined to ``x`` by an active trail given ``given``.
+
+        ``x`` itself and the nodes in ``given`` are never included.
+        """
+        self._require(x)
+        z = self._node_set(given)
+        if x in z:
+            raise ValidationError(f"{x!r} cannot be in given.")
+        return self._bayes_ball({x}, z) - {x}
+
     def topological_sort(self) -> list[str]:
         """Return a topological ordering, computed with Kahn's algorithm.
 
@@ -178,6 +202,43 @@ class DAG:
         return f"DAG(nodes={list(self.nodes())!r}, edges={list(self.edges())!r})"
 
     # -- internals ----------------------------------------------------------
+
+    def _bayes_ball(self, sources: set[str], given: set[str]) -> set[str]:
+        """Nodes outside ``given`` reachable from ``sources`` by d-connecting walks (Alg. 3.1).
+
+        A state is (node, arrived_from_child). Lemma 1 of d_separation.md shows that
+        d-connecting walks reach exactly the nodes joined to a source by active trails.
+        """
+        ancestral = self.ancestral_set(given)  # colliders in here are open
+        up, down = True, False  # arrived from a child / arrived from a parent
+        visited: set[tuple[str, bool]] = set()
+        reachable: set[str] = set()
+        stack = [(s, up) for s in sources]
+        while stack:
+            node, direction = stack.pop()
+            if (node, direction) in visited:
+                continue
+            visited.add((node, direction))
+            if node not in given:
+                reachable.add(node)
+            if direction is up:
+                if node not in given:  # chain (going up) or fork
+                    stack.extend((p, up) for p in self._parents[node])
+                    stack.extend((c, down) for c in self._children[node])
+            else:
+                if node not in given:  # chain (going down)
+                    stack.extend((c, down) for c in self._children[node])
+                if node in ancestral:  # collider, opened by an observed descendant
+                    stack.extend((p, up) for p in self._parents[node])
+        return reachable
+
+    def _node_set(self, nodes: Iterable[str]) -> set[str]:
+        if isinstance(nodes, str):
+            raise ValidationError(f"Expected a collection of node names, not the string {nodes!r}.")
+        result = set(nodes)
+        for node in result:
+            self._require(node)
+        return result
 
     def _require(self, node: str) -> None:
         if node not in self._children:
