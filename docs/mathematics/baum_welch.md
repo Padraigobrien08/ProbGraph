@@ -92,9 +92,19 @@ The new emission rows are again equal and $\pi$ is still stationary, so the next
 reproduces the same point. $\square$
 
 Without stationarity this fails: $\gamma_t=\pi A^{t-1}$ changes with $t$, so state $i$'s emission row
-weights the early and late observations differently from state $j$'s, and the rows separate. The
-symmetric point is a stationary point of $\ell$ (P16 §6), but typically a saddle point: a small
-perturbation lets the states specialise.
+weights the early and late observations differently from state $j$'s, and the rows separate.
+
+**A weakly repelling saddle (observed).** The symmetric point is a stationary point of $\ell$
+(P16 §6), but on the two-state "sea" data of the tests it is a saddle, not a maximum: random starts
+reach $\ell=-1584.18$, while the symmetric point has $\ell=-1656.26$. It repels only weakly, though.
+Nudging one emission row by $10^{-3}$, the first step pulls the rows almost back together, and $\ell$
+then creeps up by about $10^{-5}$ per iteration: $-1655.95$ after 400 iterations and $-1655.64$
+after 2,000. Somewhere between iterations 2,000 and 2,500 the states finally separate, and $\ell$
+jumps to the same $-1584.18$. A tolerance-based stop ($10^{-6}$) halts on the plateau long before
+that and reports convergence, so **"converged" does not mean "optimal"**. Random initialisation
+avoids the plateau, but not every bad point: with three hidden states, one of four random starts
+was observed converging to a local optimum 168 nats below the others. Several starts, keeping the
+best, are the practical remedy.
 
 ## 5. How the tests check this independently
 
