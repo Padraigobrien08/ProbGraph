@@ -11,7 +11,7 @@
 
 | Failure | Example | What float64 does |
 |---|---|---|
-| **Underflow** | $P(e)$ for 1,100 observations (M3 fixture F3): $\log P(e)\approx-784.9$, so $P(e)\approx10^{-341}$ | rounds to `0.0`. M2's variable elimination then **raises `ZeroProbabilityEvidenceError` for possible evidence** |
+| **Underflow** | $P(e)$ for 1,100 observations (M3 fixture F3): $\log P(e)\approx-784.9$, so $P(e)\approx10^{-341}$ | ends at `0.0` or at a subnormal leftover such as `5e-324`, depending on the order of the products. M2's variable elimination then either **raises `ZeroProbabilityEvidenceError` for possible evidence**, or **silently returns a confident, wrong posterior** ($[0,1]$ where the truth is $[0.5,0.5]$) |
 | **Overflow** | a Markov network with 200 factors of size about $100$: $Z\approx100^{200}=10^{400}$ | rounds to `inf`. `DiscreteFactor` correctly refuses it, so inference stops |
 
 float64 represents positive numbers from about $10^{-324}$ (the smallest subnormal) up to about
@@ -103,3 +103,39 @@ absolute tolerance in log space (default $10^{-12}$), and requires $-\infty$ ent
   documented, and it is the reason to stay in log space for as long as possible. Entries above
   about $709$ overflow, and `DiscreteFactor` rejects them with a `ValidationError` rather than
   holding `inf`.
+
+## 8. Variable elimination in log space
+
+Variable elimination (P6) uses only products and sums of factors. Apply the isomorphism of §5
+to every step: replace each factor by its logarithm, each product by $+$, and each sum by
+log-sum-exp. The result is $\log P(Q,e)$. **No new correctness proof is needed.** The
+P6 invariant, its induction and its order independence are statements about $+$ and $\times$,
+and they hold in the image of the isomorphism exactly as they hold in probability space.
+Normalisation is $\log P(Q,e)-\log P(e)$, with $\log P(e)=\mathrm{LSE}_Q\log P(Q,e)$.
+
+`VariableElimination` takes `space="log"` **by default** since v0.3.0, and
+`log_probability_of_evidence` always works in log space. `space="probability"` keeps the M2
+behaviour. The default was changed after F3 showed that probability space can silently return a
+wrong posterior, not merely raise (spec ⚑2, revised). Wherever probability space does not
+underflow, the two agree to rounding, so no M2 answer changes beyond about $10^{-12}$.
+
+**Zero detection becomes exact.** In probability space, $P(e)=0$ has two possible causes: the
+evidence is impossible, or a product of tiny numbers underflowed. Worse, partial underflow
+through the *subnormal* range (below about $2.2\times10^{-308}$, where float64 loses precision
+digit by digit) can leave a nonzero but meaningless total. The fixture F3 shows both outcomes:
+M2 raises for one ordering of the same evidence and returns $[0,1]$ instead of $[0.5,0.5]$ for
+another. In log space:
+
+- a $-\infty$ entry can only come from $\log 0$ in some input factor, because sums of finite log
+  values stay finite, and log-sum-exp of a slice with any finite entry is finite (Lemma 1);
+- so $\log P(e)=-\infty$ **exactly when** every term of the elimination sum contains a structural
+  zero, which is exactly when $P(e)=0$ in exact arithmetic.
+
+The only exception would be log values beyond about $-1.8\times10^{308}$, which means
+probabilities of order $e^{-10^{308}}$. No model this library can store comes close.
+
+**What still underflows.** The **posterior** is converted back to probabilities, because it is
+normalised: every entry is at most 1, and an entry below about $10^{-324}$ becomes 0. That is
+correct to within float64 resolution. `probability_of_evidence(..., space="log")` returns
+$e^{\log P(e)}$, which underflows to `0.0` for F3, but it does not raise. Use
+`log_probability_of_evidence` when $P(e)$ itself is needed.

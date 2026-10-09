@@ -5,10 +5,11 @@ The correctness proof (P6) is in ``docs/mathematics/variable_elimination.md``.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping, Sequence
 from functools import reduce
 from operator import mul
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, TypeVar
 
 from probgraph._assignments import check_partial_assignment, check_query_and_evidence
 from probgraph.exceptions import (
@@ -17,7 +18,7 @@ from probgraph.exceptions import (
     ValidationError,
     ZeroProbabilityEvidenceError,
 )
-from probgraph.factors import DiscreteFactor
+from probgraph.factors import DiscreteFactor, LogFactor
 from probgraph.graphs import UndirectedGraph, interaction_graph
 from probgraph.inference.elimination_order import (
     HEURISTICS,
@@ -29,6 +30,11 @@ from probgraph.inference.elimination_order import (
 
 if TYPE_CHECKING:
     from probgraph.models import BayesianNetwork
+
+Space = Literal["probability", "log"]
+SPACES: tuple[Space, ...] = ("probability", "log")
+
+_Table = TypeVar("_Table", DiscreteFactor, LogFactor)
 
 
 class VariableElimination:
@@ -58,6 +64,7 @@ class VariableElimination:
 
     def __init__(self, model: BayesianNetwork) -> None:
         self._factors = model.factors()  # validates the model
+        self._log_factors = tuple(LogFactor.from_factor(phi) for phi in self._factors)
         self._graph = model.graph  # a copy; used for ancestral pruning
         self._variables = {v.name: v for v in model.variables}
         self._cardinalities = {v.name: v.cardinality for v in model.variables}
@@ -71,8 +78,15 @@ class VariableElimination:
         elimination_order: Sequence[str] | Heuristic = "min_fill",
         prune_barren: bool = True,
         prune_evidence: bool = False,
+        space: Space = "log",
     ) -> DiscreteFactor:
         """Return P(variables | evidence) as a normalised factor over ``variables``.
+
+        By default (``space="log"``) every step works on log factors
+        (log_space.md §8). This avoids underflow, so tiny-but-possible evidence is
+        never mistaken for impossible evidence, and never silently corrupts the
+        posterior. ``space="probability"`` is the M2 behaviour: slightly faster, and
+        identical wherever it does not underflow.
 
         With ``prune_barren`` (the default), only the CPDs of An*(query ∪ evidence)
         are used (Proposition 5, V7). The answer is identical either way.
@@ -84,11 +98,17 @@ class VariableElimination:
         ``ZeroProbabilityEvidenceError``.
         """
         query, observed = self._check_query_and_evidence(variables, evidence)
-        factors, order = self._plan(
+        _check_space(space)
+        order, kept, used = self._plan(
             query, observed, elimination_order, prune_barren, prune_evidence
         )
-        joint = _eliminate(factors, order)  # P(Q, e), with scope exactly Q
         try:
+            if space == "log":
+                log_factors = self._select(self._log_factors, kept, used)
+                log_joint = _eliminate(log_factors, order, LogFactor.unit())
+                return log_joint.normalise().to_factor().aligned(query)
+            factors = self._select(self._factors, kept, used)
+            joint = _eliminate(factors, order, DiscreteFactor.unit())  # P(Q, e)
             return joint.normalise().aligned(query)
         except NormalisationError:
             raise ZeroProbabilityEvidenceError(
@@ -100,15 +120,41 @@ class VariableElimination:
         evidence: Mapping[str, str],
         elimination_order: Sequence[str] | Heuristic = "min_fill",
         prune_barren: bool = True,
+        space: Space = "log",
     ) -> float:
         """Return P(e), eliminating every unobserved variable.
 
         Impossible evidence returns 0.0. Unlike ``query``, this does not raise.
+        By default (``space="log"``) the result is exp(log P(e)), which is exact up to
+        rounding but can underflow to 0.0 for tiny P(e). Use
+        ``log_probability_of_evidence`` when that matters.
         """
+        _check_space(space)
+        if space == "log":
+            return math.exp(
+                self.log_probability_of_evidence(evidence, elimination_order, prune_barren)
+            )
         observed = check_partial_assignment(self._variables, evidence)
         # P(e) depends on every observation, so evidence is never dropped here.
-        factors, order = self._plan([], observed, elimination_order, prune_barren, False)
-        return _eliminate(factors, order).total()
+        order, kept, used = self._plan([], observed, elimination_order, prune_barren, False)
+        factors = self._select(self._factors, kept, used)
+        return _eliminate(factors, order, DiscreteFactor.unit()).total()
+
+    def log_probability_of_evidence(
+        self,
+        evidence: Mapping[str, str],
+        elimination_order: Sequence[str] | Heuristic = "min_fill",
+        prune_barren: bool = True,
+    ) -> float:
+        """Return log P(e), computed entirely in log space.
+
+        Returns -inf exactly when the evidence is structurally impossible: in log
+        space a -inf cannot arise from underflow (log_space.md §8).
+        """
+        observed = check_partial_assignment(self._variables, evidence)
+        order, kept, used = self._plan([], observed, elimination_order, prune_barren, False)
+        log_factors = self._select(self._log_factors, kept, used)
+        return _eliminate(log_factors, order, LogFactor.unit()).log_total()
 
     # -- inspection ---------------------------------------------------------
 
@@ -139,7 +185,7 @@ class VariableElimination:
         query, observed = self._check_query_and_evidence(variables, evidence)
         if not isinstance(heuristic, str):
             raise ValidationError(f"heuristic must be one of {HEURISTICS}, got {heuristic!r}.")
-        return self._plan(query, observed, heuristic, prune_barren, prune_evidence)[1]
+        return self._plan(query, observed, heuristic, prune_barren, prune_evidence)[0]
 
     def query_trace(
         self,
@@ -148,14 +194,23 @@ class VariableElimination:
         elimination_order: Sequence[str] | Heuristic = "min_fill",
         prune_barren: bool = True,
         prune_evidence: bool = False,
+        space: Space = "log",
     ) -> EliminationTrace:
-        """The intermediate tables that ``query`` with the same arguments would build."""
+        """The intermediate tables that ``query`` with the same arguments would build.
+
+        The trace is the same in either space: the order and the scopes depend
+        only on the graph.
+        """
         query, observed = self._check_query_and_evidence(variables, evidence)
-        factors, order = self._plan(
+        _check_space(space)
+        order, kept, used = self._plan(
             query, observed, elimination_order, prune_barren, prune_evidence
         )
         steps: list[EliminationStep] = []
-        _eliminate(factors, order, steps)
+        if space == "log":
+            _eliminate(self._select(self._log_factors, kept, used), order, LogFactor.unit(), steps)
+        else:
+            _eliminate(self._select(self._factors, kept, used), order, DiscreteFactor.unit(), steps)
         return EliminationTrace(tuple(steps))
 
     def elimination_cost(
@@ -184,7 +239,8 @@ class VariableElimination:
         if clash:
             raise ValidationError(f"Cannot eliminate observed variables {clash}.")
         steps: list[EliminationStep] = []
-        _eliminate([phi.reduce(observed) for phi in self._factors], names, steps)
+        reduced = [phi.reduce(observed) for phi in self._factors]
+        _eliminate(reduced, names, DiscreteFactor.unit(), steps)
         return EliminationTrace(tuple(steps))
 
     # -- internals ----------------------------------------------------------
@@ -196,8 +252,12 @@ class VariableElimination:
         elimination_order: Sequence[str] | Heuristic,
         prune_barren: bool,
         prune_evidence: bool,
-    ) -> tuple[list[DiscreteFactor], list[str]]:
-        """Choose the factors to use and the order in which to eliminate."""
+    ) -> tuple[list[str], list[int], dict[str, str]]:
+        """Choose the elimination order, the factors to keep, and the evidence to apply.
+
+        Returns ``(order, kept, used)``: ``kept`` indexes into the model's factors
+        (in either space), and ``used`` is the evidence to reduce them by.
+        """
         anchor = [*query, *observed]
         if prune_evidence and query:
             # Proposition 6: only requisite observations need to hold the ancestral set open.
@@ -207,7 +267,8 @@ class VariableElimination:
         # decomposition) and cheaper than eliminating it. See d_separation.md §9.
         used = {name: state for name, state in observed.items() if name in keep}
         # Each factor is the CPD of its first variable; keep it if that variable is kept.
-        factors = [phi.reduce(used) for phi in self._factors if phi.names[0] in keep]
+        kept = [i for i, phi in enumerate(self._factors) if phi.names[0] in keep]
+        factors = self._select(self._factors, kept, used)
 
         if isinstance(elimination_order, str):
             if elimination_order not in HEURISTICS:
@@ -223,7 +284,13 @@ class VariableElimination:
             # An explicit order lists every unobserved non-query variable; pruned ones are skipped.
             full = self._check_order(elimination_order, exclude=[*query, *observed])
             order = [n for n in full if n in keep]
-        return factors, order
+        return order, kept, used
+
+    @staticmethod
+    def _select(
+        source: Sequence[_Table], kept: Sequence[int], used: Mapping[str, str]
+    ) -> list[_Table]:
+        return [source[i].reduce(used) for i in kept]
 
     def _check_query_and_evidence(
         self, variables: Sequence[str], evidence: Mapping[str, str] | None
@@ -253,22 +320,33 @@ class VariableElimination:
 
 
 def _eliminate(
-    factors: Iterable[DiscreteFactor],
+    factors: Sequence[_Table],
     order: Sequence[str],
+    unit: _Table,
     trace: list[EliminationStep] | None = None,
-) -> DiscreteFactor:
-    """Return Σ_order Π factors, summing out one variable at a time (P6 §2)."""
+) -> _Table:
+    """Return Σ_order Π factors, summing out one variable at a time (P6 §2).
+
+    The same code runs in either space: for log factors, × is + and Σ is
+    log-sum-exp (log_space.md §5).
+    """
     remaining = list(factors)
     for z in order:
         involved = [phi for phi in remaining if z in phi.scope]
         # Keep the factors that do not mention z: the lemma moves the sum past them.
         remaining = [phi for phi in remaining if z not in phi.scope]
-        psi = _product(involved)
+        psi = _product(involved, unit)
         if trace is not None:
-            trace.append(EliminationStep(z, psi.scope, psi.values.size))
+            size = math.prod(v.cardinality for v in psi.variables)
+            trace.append(EliminationStep(z, psi.scope, size))
         remaining.append(psi.marginalise([z]))
-    return _product(remaining)
+    return _product(remaining, unit)
 
 
-def _product(factors: Iterable[DiscreteFactor]) -> DiscreteFactor:
-    return reduce(mul, factors, DiscreteFactor.unit())
+def _product(factors: Iterable[_Table], unit: _Table) -> _Table:
+    return reduce(mul, factors, unit)
+
+
+def _check_space(space: object) -> None:
+    if space not in SPACES:
+        raise ValidationError(f"space must be one of {SPACES}, got {space!r}.")

@@ -265,3 +265,24 @@ def factors(draw, pool=tuple(POOL)):
 def evidence_for(draw, pool=tuple(POOL)):
     chosen = draw(st.lists(st.sampled_from(pool), unique_by=lambda v: v.name, max_size=3))
     return {v.name: draw(st.sampled_from(v.states)) for v in chosen}
+
+
+# ---------------------------------------------------------------------------
+# M3 fixture F3: the underflow regression (docs/specs/milestone-3.md §4)
+# ---------------------------------------------------------------------------
+
+
+def underflow_network(n_features: int = 1100) -> BayesianNetwork:
+    """Naive Bayes C -> F_i with P(C) = [0.5, 0.5] and P(F_i | C) = [[0.6, 0.4], [0.4, 0.6]]."""
+    c = DiscreteVariable("C", ("0", "1"))
+    features = [DiscreteVariable(f"F{i}", ("0", "1")) for i in range(n_features)]
+    model = BayesianNetwork([c, *features], [("C", f.name) for f in features])
+    model.add_cpd(TabularCPD(c, (), [0.5, 0.5]))
+    for f in features:
+        model.add_cpd(TabularCPD(f, (c,), [[0.6, 0.4], [0.4, 0.6]]))
+    return model
+
+
+def underflow_evidence(n_zeros: int, n_ones: int) -> dict[str, str]:
+    """Observe the first ``n_zeros`` features as "0" and the next ``n_ones`` as "1"."""
+    return {f"F{i}": ("0" if i < n_zeros else "1") for i in range(n_zeros + n_ones)}

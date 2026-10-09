@@ -1,4 +1,4 @@
-# ProbGraph — Milestone 3 Technical Specification (v1.0)
+# ProbGraph — Milestone 3 Technical Specification (v1.2)
 
 **Milestone:** Message passing: Markov networks, clique trees and belief propagation.
 **Release target:** `v0.3.0`.
@@ -19,10 +19,11 @@ every marginal at once. M3 adds four things:
 
 1. **Log-space factors.** M2's variable elimination underflows. In a naive-Bayes model with
    1,100 observed features, the true $P(e)\approx10^{-341}$, below float64's smallest positive
-   number (about $10^{-324}$). M2 therefore reports $P(e)=0$ and **raises
-   `ZeroProbabilityEvidenceError` for evidence that is possible**, while the true posterior is
-   exactly $[0.5,0.5]$ by symmetry. This was verified with v0.2.0 during planning. Log-space
-   factors fix it with log-sum-exp.
+   number (about $10^{-324}$). Depending on the order of the evidence, M2 either reports
+   $P(e)=0$ and **raises `ZeroProbabilityEvidenceError` for evidence that is possible**, or keeps
+   a subnormal leftover ($5\times10^{-324}$) and **silently returns a wrong posterior**, $[0,1]$
+   where the truth is exactly $[0.5,0.5]$. Both were verified with v0.2.0 (the second during
+   M3.2). Log-space factors fix both with log-sum-exp.
 2. **Markov networks.** An undirected model class,
    $P(x)=\frac1Z\prod_C\phi_C(x_C)$, including the partition function $Z$, the global Markov
    property, and the conversion from a Bayesian network by moralisation.
@@ -100,7 +101,7 @@ class LogFactor:
 | L2 | `LogFactor.from_factor(φ).to_factor()` equals φ wherever no underflow occurs. |
 | L3 | Every operation corresponds exactly to its `DiscreteFactor` counterpart under $\exp$ (P5 laws transfer). |
 | L4 | **Stability:** log-sum-exp never overflows; an all-$-\infty$ slice gives $-\infty$, not NaN. |
-| L5 | `VariableElimination(..., space="log")` answers the 1,100-feature query exactly as $[0.5,0.5]$ and returns $\log P(e)$ correctly where M2 returned 0. |
+| L5 | `VariableElimination` (log space, the default since v0.3.0) answers the 1,100-feature query exactly as $[0.5,0.5]$ and returns $\log P(e)$ correctly where M2 returned 0 or a wrong posterior. |
 
 ### 3.2 `MarkovNetwork`
 
@@ -236,7 +237,8 @@ $\{B,C,D\}$ with separator $\{B,D\}$ and width 2.
 **F3: the underflow regression.** Naive Bayes with $C\to F_1,\ldots,F_{1100}$,
 $P(C)=[0.5,0.5]$, $P(F_i\mid C)$ = [[0.6, 0.4], [0.4, 0.6]], and balanced evidence (550 of
 each value). Then $\log P(e)=550\log0.6+550\log0.4\approx-784.91$ and $P(C\mid e)=[0.5,0.5]$
-exactly. M2 raises an error here; M3 must not.
+exactly. Depending on evidence order, M2 raises an error here or returns $[0,1]$; M3 must do
+neither.
 
 ---
 
@@ -323,7 +325,7 @@ examples/
 | ⚑ | Decision | Accepted | Why |
 |---|---|---|---|
 | 1 | Log-space representation | **A separate `LogFactor` class**; `DiscreteFactor` unchanged | Keeps the M2 API and tests stable; a separate type makes conversions explicit, so it is always clear which space a value is in |
-| 2 | Space used by message passing | **Always log space** inside `JunctionTree`; VE gets an opt-in `space="log"` | Message passing multiplies many messages, which is where underflow bites; VE stays backward compatible |
+| 2 | Space used by message passing | **Always log space** inside `JunctionTree`. ~~VE gets an opt-in `space="log"`~~ **Revised 2026-10-09: VE defaults to `space="log"`**; `space="probability"` remains available | Message passing multiplies many messages, which is where underflow bites. VE's default was changed during M3.2, after F3 showed probability space can *silently* return a wrong posterior; results that did not underflow are unchanged to rounding |
 | 3 | Message-passing variant | **Shafer–Shenoy** (division-free) | Hugin divides by separator beliefs, which needs a 0/0 convention for structural zeros; Shafer–Shenoy avoids that. Hugin can appear in tests as a cross-check |
 | 4 | Clique-tree construction | **From an elimination order** (reuses the M2 heuristics); a maximum-weight spanning tree in tests as the oracle | One code path, and an independent check |
 | 5 | `MarkovNetwork` graph | **Derived from the factors** (interaction graph) | No way for a declared graph and the factors to disagree |
