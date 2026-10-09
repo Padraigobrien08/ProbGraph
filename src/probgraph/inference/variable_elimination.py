@@ -70,14 +70,23 @@ class VariableElimination:
         evidence: Mapping[str, str] | None = None,
         elimination_order: Sequence[str] | Heuristic = "min_fill",
         prune_barren: bool = True,
+        prune_evidence: bool = False,
     ) -> DiscreteFactor:
         """Return P(variables | evidence) as a normalised factor over ``variables``.
 
         With ``prune_barren`` (the default), only the CPDs of An*(query ∪ evidence)
         are used (Proposition 5, V7). The answer is identical either way.
+
+        With ``prune_evidence`` (opt-in), observations d-separated from the query
+        are dropped first, which can enable more barren pruning (d_separation.md §9).
+        Caveat: if the evidence is impossible only because of a dropped observation,
+        the answer given the requisite evidence is returned instead of raising
+        ``ZeroProbabilityEvidenceError``.
         """
         query, observed = self._check_query_and_evidence(variables, evidence)
-        factors, order = self._plan(query, observed, elimination_order, prune_barren)
+        factors, order = self._plan(
+            query, observed, elimination_order, prune_barren, prune_evidence
+        )
         joint = _eliminate(factors, order)  # P(Q, e), with scope exactly Q
         try:
             return joint.normalise().aligned(query)
@@ -97,10 +106,19 @@ class VariableElimination:
         Impossible evidence returns 0.0. Unlike ``query``, this does not raise.
         """
         observed = check_partial_assignment(self._variables, evidence)
-        factors, order = self._plan([], observed, elimination_order, prune_barren)
+        # P(e) depends on every observation, so evidence is never dropped here.
+        factors, order = self._plan([], observed, elimination_order, prune_barren, False)
         return _eliminate(factors, order).total()
 
     # -- inspection ---------------------------------------------------------
+
+    def requisite_evidence(
+        self, variables: Sequence[str], evidence: Mapping[str, str]
+    ) -> dict[str, str]:
+        """The observations that can affect P(variables | evidence) (Proposition 6)."""
+        query, observed = self._check_query_and_evidence(variables, evidence)
+        requisite = self._graph.requisite_evidence(query, observed)
+        return {name: state for name, state in observed.items() if name in requisite}
 
     def barren_variables(
         self, variables: Sequence[str], evidence: Mapping[str, str] | None = None
@@ -115,12 +133,13 @@ class VariableElimination:
         evidence: Mapping[str, str] | None = None,
         heuristic: Heuristic = "min_fill",
         prune_barren: bool = True,
+        prune_evidence: bool = False,
     ) -> list[str]:
         """The order ``heuristic`` chooses for this query. Ties go to model declaration order."""
         query, observed = self._check_query_and_evidence(variables, evidence)
         if not isinstance(heuristic, str):
             raise ValidationError(f"heuristic must be one of {HEURISTICS}, got {heuristic!r}.")
-        return self._plan(query, observed, heuristic, prune_barren)[1]
+        return self._plan(query, observed, heuristic, prune_barren, prune_evidence)[1]
 
     def query_trace(
         self,
@@ -128,10 +147,13 @@ class VariableElimination:
         evidence: Mapping[str, str] | None = None,
         elimination_order: Sequence[str] | Heuristic = "min_fill",
         prune_barren: bool = True,
+        prune_evidence: bool = False,
     ) -> EliminationTrace:
         """The intermediate tables that ``query`` with the same arguments would build."""
         query, observed = self._check_query_and_evidence(variables, evidence)
-        factors, order = self._plan(query, observed, elimination_order, prune_barren)
+        factors, order = self._plan(
+            query, observed, elimination_order, prune_barren, prune_evidence
+        )
         steps: list[EliminationStep] = []
         _eliminate(factors, order, steps)
         return EliminationTrace(tuple(steps))
@@ -173,14 +195,19 @@ class VariableElimination:
         observed: Mapping[str, str],
         elimination_order: Sequence[str] | Heuristic,
         prune_barren: bool,
+        prune_evidence: bool,
     ) -> tuple[list[DiscreteFactor], list[str]]:
         """Choose the factors to use and the order in which to eliminate."""
-        if prune_barren:
-            keep = self._graph.ancestral_set([*query, *observed])
-        else:
-            keep = set(self._variables)
+        anchor = [*query, *observed]
+        if prune_evidence and query:
+            # Proposition 6: only requisite observations need to hold the ancestral set open.
+            anchor = [*query, *self._graph.requisite_evidence(query, observed)]
+        keep = self._graph.ancestral_set(anchor) if prune_barren else set(self._variables)
+        # A dropped observation inside `keep` stays observed: still exact (weak union +
+        # decomposition) and cheaper than eliminating it. See d_separation.md §9.
+        used = {name: state for name, state in observed.items() if name in keep}
         # Each factor is the CPD of its first variable; keep it if that variable is kept.
-        factors = [phi.reduce(observed) for phi in self._factors if phi.names[0] in keep]
+        factors = [phi.reduce(used) for phi in self._factors if phi.names[0] in keep]
 
         if isinstance(elimination_order, str):
             if elimination_order not in HEURISTICS:

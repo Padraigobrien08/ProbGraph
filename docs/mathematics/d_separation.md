@@ -6,7 +6,7 @@
 
 This note covers the definition, the three local structures, and the correctness of Bayes ball
 (§1–§4), then the moralised-ancestral criterion, soundness, generic completeness and the
-graphoid axioms (§5–§8).
+graphoid axioms (§5–§8), and finally requisite evidence (§9).
 
 ---
 
@@ -228,3 +228,45 @@ d-separation satisfies the **semi-graphoid** axioms. It also satisfies **interse
 For d-separation, composition is immediate from the definition: "no active trail from $X$ to
 $Y\cup W$" is a statement about each target separately. The tests check every row on random
 DAGs, and use the XOR network to show that composition fails for probabilities.
+
+## 9. Requisite evidence: dropping observations that cannot matter
+
+Some observations cannot change the answer to a query. Bayes ball identifies them in the same
+linear-time pass.
+
+Run Bayes ball from $Q$ with $Z=E$. Say an observed node $e\in E$ is **reached** if the search
+arrives at it in either state. Arriving does not depend on whether $e$ is observed: only the
+nodes *before* $e$ on the walk are tested. Let $N\subseteq E$ be the reached observations,
+the **requisite evidence**.
+
+**Proposition 6.** $Q\perp_G (E\setminus N)\mid N$. Hence, by Theorem 4,
+$P(Q\mid e)=P(Q\mid e_N)$ whenever $P(e)>0$.
+
+*Proof.* Suppose, for contradiction, that given $N$ some $w\in E\setminus N$ is d-connected to
+$Q$. Take a d-connecting walk (given $N$) from $Q$ to such a $w$, and let $w'$ be the **first**
+node of $E\setminus N$ on it. Check the prefix up to $w'$ against the rules *given $E$*:
+
+- its non-colliders are not in $N$ (the walk is d-connecting given $N$) and are not in
+  $E\setminus N$ (because $w'$ is the first such node), so they are not in $E$;
+- its colliders are in $\mathrm{An}^*(N)\subseteq\mathrm{An}^*(E)$, so they are open given $E$ as well.
+
+So the prefix is d-connecting given $E$, which means Bayes ball with $Z=E$ reaches $w'$. That
+contradicts $w'\notin N$. $\square$
+
+Dropping $E\setminus N$ then allows *more* barren pruning (P6 §5), because fewer observed
+variables hold the ancestral set open. Only those dropped observations whose variables fall
+outside the new ancestral set $\mathrm{An}^*(Q\cup N)$ are actually removed. A dropped
+observation that is still an ancestor stays observed. In $W\to V\to Q$ with $E=\{W,V\}$, $N=\{V\}$,
+but $W$ is still an ancestor of $Q$. That is still exact: $Q\perp(E\setminus N)\mid N$ implies,
+by weak union and decomposition, $P(Q\mid e_N,e_{W'})=P(Q\mid e_N)$ for every
+$W'\subseteq E\setminus N$. It is also cheaper: an observed variable is reduced away instead of
+being eliminated. So evidence pruning has an effect only together with barren pruning.
+
+**The zero-probability caveat.** If $P(e)=0$ only because of an *irrelevant* observation, then
+$P(Q\mid e)$ is undefined but $P(Q\mid e_N)$ is not. Pruned inference would return a number
+where unpruned inference raises `ZeroProbabilityEvidenceError` (invariant V5). Detecting this
+would require computing $P(e)$, which costs the work that pruning was meant to save. So
+evidence pruning is **opt-in** (`prune_evidence=True`), and this behaviour is documented and
+tested. Barren pruning has no such caveat and stays on by default: it keeps every observed
+variable, so $P(e)$ is still computed exactly. `probability_of_evidence` never drops evidence,
+because $P(e)$ depends on all of it.

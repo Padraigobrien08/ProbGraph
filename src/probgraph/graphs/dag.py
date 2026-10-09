@@ -150,7 +150,7 @@ class DAG:
             raise ValidationError("d_separated() needs non-empty xs and ys.")
         if x & y or x & z or y & z:
             raise ValidationError("d_separated() needs disjoint xs, ys and given.")
-        return not (self._bayes_ball(x, z) & y)
+        return not (self._bayes_ball(x, z) & y)  # y is disjoint from z
 
     def d_connected_nodes(self, x: str, given: Iterable[str] = ()) -> set[str]:
         """Every node joined to ``x`` by an active trail given ``given``.
@@ -161,7 +161,20 @@ class DAG:
         z = self._node_set(given)
         if x in z:
             raise ValidationError(f"{x!r} cannot be in given.")
-        return self._bayes_ball({x}, z) - {x}
+        return self._bayes_ball({x}, z) - z - {x}
+
+    def requisite_evidence(self, query: Iterable[str], evidence: Iterable[str]) -> set[str]:
+        """The observed nodes that Bayes ball from ``query`` reaches, given ``evidence``.
+
+        The other observations are d-separated from the query given these
+        (d_separation.md §9, Proposition 6), so they cannot change P(query | e).
+        """
+        q, e = self._node_set(query), self._node_set(evidence)
+        if not q:
+            raise ValidationError("requisite_evidence() needs a non-empty query.")
+        if q & e:
+            raise ValidationError("requisite_evidence() needs disjoint query and evidence.")
+        return self._bayes_ball(q, e) & e
 
     def topological_sort(self) -> list[str]:
         """Return a topological ordering, computed with Kahn's algorithm.
@@ -204,7 +217,10 @@ class DAG:
     # -- internals ----------------------------------------------------------
 
     def _bayes_ball(self, sources: set[str], given: set[str]) -> set[str]:
-        """Nodes outside ``given`` reachable from ``sources`` by d-connecting walks (Alg. 3.1).
+        """Every node visited from ``sources`` by d-connecting walks (Alg. 3.1).
+
+        Visited nodes outside ``given`` are the d-connected ones. Visited nodes in
+        ``given`` are the requisite observations (§9).
 
         A state is (node, arrived_from_child). Lemma 1 of d_separation.md shows that
         d-connecting walks reach exactly the nodes joined to a source by active trails.
@@ -212,15 +228,14 @@ class DAG:
         ancestral = self.ancestral_set(given)  # colliders in here are open
         up, down = True, False  # arrived from a child / arrived from a parent
         visited: set[tuple[str, bool]] = set()
-        reachable: set[str] = set()
+        reached: set[str] = set()
         stack = [(s, up) for s in sources]
         while stack:
             node, direction = stack.pop()
             if (node, direction) in visited:
                 continue
             visited.add((node, direction))
-            if node not in given:
-                reachable.add(node)
+            reached.add(node)
             if direction is up:
                 if node not in given:  # chain (going up) or fork
                     stack.extend((p, up) for p in self._parents[node])
@@ -230,7 +245,7 @@ class DAG:
                     stack.extend((c, down) for c in self._children[node])
                 if node in ancestral:  # collider, opened by an observed descendant
                     stack.extend((p, up) for p in self._parents[node])
-        return reachable
+        return reached
 
     def _node_set(self, nodes: Iterable[str]) -> set[str]:
         if isinstance(nodes, str):
