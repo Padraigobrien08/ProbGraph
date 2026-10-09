@@ -10,7 +10,7 @@ from functools import reduce
 from operator import mul
 from typing import TYPE_CHECKING
 
-from probgraph._assignments import check_partial_assignment
+from probgraph._assignments import check_partial_assignment, check_query_and_evidence
 from probgraph.exceptions import (
     NormalisationError,
     UnknownNodeError,
@@ -228,28 +228,7 @@ class VariableElimination:
     def _check_query_and_evidence(
         self, variables: Sequence[str], evidence: Mapping[str, str] | None
     ) -> tuple[list[str], dict[str, str]]:
-        query = self._check_query(variables)
-        observed = check_partial_assignment(self._variables, evidence or {})
-        both = [name for name in query if name in observed]
-        if both:
-            raise ValidationError(f"Variables {both} are both queried and observed.")
-        return query, observed
-
-    def _check_query(self, variables: Sequence[str]) -> list[str]:
-        if isinstance(variables, str):
-            raise ValidationError(
-                f"Query must be a sequence of variable names, not the string {variables!r}."
-            )
-        query = list(variables)
-        if not query:
-            raise ValidationError("Query must name at least one variable.")
-        duplicates = sorted({n for n in query if query.count(n) > 1})
-        if duplicates:
-            raise ValidationError(f"Query has duplicate variables {duplicates}.")
-        unknown = [n for n in query if n not in self._variables]
-        if unknown:
-            raise UnknownNodeError(f"Query names unknown variables {unknown}.")
-        return query
+        return check_query_and_evidence(self._variables, variables, evidence)
 
     def _check_order(self, order: Sequence[str], exclude: Iterable[str]) -> list[str]:
         excluded = set(exclude)

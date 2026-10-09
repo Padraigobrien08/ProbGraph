@@ -31,3 +31,7 @@ class NormalisationError(ProbGraphError, ArithmeticError):
 
 class ZeroProbabilityEvidenceError(NormalisationError):
     """The evidence has probability 0, so the posterior is undefined."""
+
+
+class InsufficientSamplesError(ProbGraphError, ArithmeticError):
+    """A sampling estimate is undefined: no sample was accepted, or every weight was 0."""
