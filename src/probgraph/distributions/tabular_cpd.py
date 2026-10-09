@@ -11,6 +11,7 @@ from collections.abc import Mapping, Sequence
 import numpy as np
 from numpy.typing import ArrayLike
 
+from probgraph._arrays import as_float_array
 from probgraph.exceptions import ValidationError
 from probgraph.variables import DiscreteVariable
 
@@ -47,7 +48,7 @@ class TabularCPD:
         if not isinstance(variable, DiscreteVariable):
             raise ValidationError(f"variable must be a DiscreteVariable, got {variable!r}.")
         parents = _validate_parents(variable, parents)
-        table = _as_real_array(variable, values)
+        table = as_float_array(values, f"CPD for {variable.name!r}")
 
         expected_shape = (variable.cardinality, *(p.cardinality for p in parents))
         if table.shape != expected_shape:
@@ -162,21 +163,6 @@ def _validate_parents(
     if variable.name in names:
         raise ValidationError(f"{variable.name!r} cannot be its own parent.")
     return parents
-
-
-def _as_real_array(variable: DiscreteVariable, values: ArrayLike) -> np.ndarray:
-    try:
-        raw = np.asarray(values)
-    except ValueError as exc:  # ragged nested sequences
-        raise ValidationError(
-            f"CPD for {variable.name!r}: values are not a regular array ({exc})."
-        ) from None
-    if raw.dtype.kind not in "iuf":
-        raise ValidationError(
-            f"CPD for {variable.name!r}: values must be real numbers, got dtype {raw.dtype}."
-        )
-    # Always copy, so that later changes to the caller's array cannot reach the table.
-    return np.array(raw, dtype=np.float64, copy=True)
 
 
 def _describe_parents(parents: Sequence[DiscreteVariable], config: Sequence[int]) -> str:

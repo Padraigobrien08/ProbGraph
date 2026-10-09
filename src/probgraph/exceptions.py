@@ -23,3 +23,7 @@ class UnknownNodeError(ProbGraphError, LookupError):
 
 class UnknownStateError(ProbGraphError, LookupError):
     """A state label does not belong to a variable's domain."""
+
+
+class NormalisationError(ProbGraphError, ArithmeticError):
+    """A factor with total mass 0 cannot be normalised."""

@@ -12,6 +12,7 @@ def test_public_api():
         "AncestralSampler",
         "BayesianNetwork",
         "DAG",
+        "DiscreteFactor",
         "DiscreteVariable",
         "TabularCPD",
     }
