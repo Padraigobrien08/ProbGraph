@@ -134,3 +134,32 @@ $N(x,u)\mid N(u)\sim\mathrm{Binomial}(N(u),\theta_{x\mid u})$, and:
   bounds $|\hat\theta_{x\mid u}-\theta_{x\mid u}|$ with failure probability at most $2e^{-Z^2/2}$
   per entry. The rarest configuration dominates the error, exactly as fixture F2 shows. M4.3
   tests this on sampled data.
+
+## 9. A wrong structure converges to a projection, not to the truth
+
+Suppose the data come from a distribution $P^*$, but the structure being fitted gives $X_i$ the
+parent set $W$, which may differ from its true parents. The argument of §8 still applies to the
+counts. $N(x,w)/N(w)$ is a frequency of $X_i=x$ among the rows with $W=w$, so by the strong law
+$$\hat\theta_{x\mid w}\ \to\ P^*(X_i=x\mid W=w)\quad\text{almost surely}.$$
+The estimate converges to the **true conditional given the parents that were chosen**, which is a
+projection of $P^*$ onto that structure, and not to any parameter of the true model.
+
+*Fixture example.* The Late network with Traffic's parent Accident dropped:
+$P^*(T{=}\text{yes}\mid R{=}\text{yes})=0.9\cdot0.8+0.1\cdot0.95=0.815$ and
+$P^*(T{=}\text{yes}\mid R{=}\text{no})=0.9\cdot0.1+0.1\cdot0.7=0.16$, because $A\perp R$. The tests
+check convergence to these numbers, not to 0.8 or 0.95.
+
+## 10. How much better than the truth is the MLE? (Wilks)
+
+On the data it was fitted to, the MLE always scores at least as well as the true parameters:
+$\log L(\hat\theta)\ge\log L(\theta^*)$, by definition of a maximiser. **Wilks' theorem**
+(Wilks, 1938; stated, not proved here) quantifies the gap. For a correctly specified model with
+$d$ free parameters, and true parameters inside the parameter space (every true probability
+strictly between 0 and 1),
+$$2\big(\log L(\hat\theta)-\log L(\theta^*)\big)\ \xrightarrow{\ d\ }\ \chi^2_d,\qquad \mathbb E\approx d.$$
+
+Here $d$ is exactly `n_free_parameters`, the count from M1's P4: one fewer than the number of
+states, per CPD column. So the parameter count from Milestone 1 reappears as the expected amount
+of **overfitting**, measured in units of half a log-likelihood. The Late network has $d=10$. The
+tests average $2\Delta\log L$ over many independent datasets, and check it is near 10, within a
+tolerance derived from the $\chi^2_{10}$ variance $2d=20$.
