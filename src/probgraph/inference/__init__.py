@@ -7,6 +7,7 @@ from probgraph.inference.elimination_order import (
     greedy_order,
     simulate_elimination,
 )
+from probgraph.inference.junction_tree import JunctionTree
 from probgraph.inference.variable_elimination import VariableElimination
 
 __all__ = [
@@ -15,6 +16,7 @@ __all__ = [
     "EliminationStep",
     "EliminationTrace",
     "Heuristic",
+    "JunctionTree",
     "VariableElimination",
     "greedy_order",
     "simulate_elimination",
