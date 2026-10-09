@@ -112,7 +112,7 @@ class ForwardBackward:
 | ID | Statement |
 |---|---|
 | F1 | `filtered`, `smoothed`, `pairwise` and `log_likelihood` equal brute-force enumeration over all $K^T$ hidden paths (small $T$), and `JunctionTree` on the unrolled network (any $T$). |
-| F2 | **Normalised recursion:** with $c_t=P(y_t\mid y_{1:t-1})$, $\log P(y_{1:T})=\sum_t\log c_t$. Nothing underflows: F4 (§4) matches exact rational arithmetic to $10^{-9}$ relative, where the unnormalised recursion returns 0. |
+| F2 | **Normalised recursion:** with $c_t=P(y_t\mid y_{1:t-1})$, $\log P(y_{1:T})=\sum_t\log c_t$. Nothing underflows: F4 (§4) matches exact rational arithmetic to $10^{-9}$ relative, where the unnormalised recursion returns 0 or sticks at the smallest subnormal $5\times10^{-324}$ (wrong by over 1,000 nats, silently). |
 | F3 | Consistency: $\sum_j\xi_t(i,j)=\gamma_t(i)$, $\sum_i\xi_t(i,j)=\gamma_{t+1}(j)$, and the last smoothed belief equals the last filtered belief. |
 | F4 | Missing observations contribute an emission factor of 1, and agree with the unrolled network with $Y_t$ unobserved. |
 | F5 | **Prediction forgets:** for an irreducible aperiodic chain, `predict(k)` converges geometrically to the stationary distribution. For the umbrella chain the gap is exactly $0.4^k$ times the initial gap. |
@@ -220,7 +220,8 @@ probability **0**. Viterbi gives $(0,1)$ with probability $2/5$.
 **F4: underflow.** F1's model with $T$ umbrellas in a row: $\log P(y)=-414.0917995185$ for
 $T=1000$ and $-2069.560503770881$ for $T=5000$; alternating umbrella/none for $T=1000$ gives
 $-868.4784295542072$. The last two are far below float64's smallest positive number
-($\approx e^{-745}$), so the unnormalised recursion returns exactly 0.
+($\approx e^{-745}$). The unnormalised recursion returns 0 for the alternating sequence, and for
+5,000 umbrellas gets stuck at the smallest subnormal $5\times10^{-324}$ ($\log\approx-744.4$).
 
 **F5: MPE on the late network** (M2). With no evidence the MPE is "nothing happens"
 (all "no"), $P=0.45927$. Given Late = yes, it is (Rain = yes, Accident = no, Traffic = yes,
@@ -263,7 +264,7 @@ New files: `docs/mathematics/markov_chains.md`, `forward_backward.md`, `max_prod
 
 - [ ] Unrolling is exact, and sampled sequences pass statistical tests.
 - [ ] Filtering, smoothing, pairwise posteriors and the likelihood match brute force and the junction tree on the unrolled network.
-- [ ] 5,000-step sequences give the exact log-likelihood where the unnormalised recursion underflows to 0.
+- [ ] 5,000-step sequences give the exact log-likelihood where the unnormalised recursion underflows (to 0, or to a stuck subnormal).
 - [ ] Prediction converges to the stationary distribution at the proven rate.
 - [ ] Max-product VE finds the MPE on random networks; Viterbi equals the unrolled MPE and brute force.
 - [ ] Posterior decoding is shown to produce an impossible path where Viterbi does not.
