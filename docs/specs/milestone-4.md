@@ -1,8 +1,10 @@
-# ProbGraph — Milestone 4 Technical Specification (v1.0)
+# ProbGraph — Milestone 4 Technical Specification (v1.1)
 
 **Milestone:** Learning from data: maximum likelihood, Bayesian estimation, and EM for missing data.
 **Release target:** `v0.4.0`.
 **Status:** Accepted 2026-10-09. All §9 decisions are confirmed with their proposed defaults.
+**v1.1 (M4.6):** EM's interface gains `point`, `step`, `initial_model`, `expected_counts` and
+`EMResult.log_objective`; M2 and ⚑6 are corrected for the posterior-mean M-step (em.md §7).
 **Primary objective:** Learn the parameters of a Bayesian network from data, whether complete or
 with missing values. Prove each estimator correct, and check it against independent oracles
 (exact arithmetic, brute-force enumeration, and data sampled from a known network) so that
@@ -145,14 +147,19 @@ def log_marginal_likelihood(structure, data, prior) -> float: ...   # the Bayesi
 ```python
 class ExpectationMaximisation:
     def __init__(self, structure: BayesianNetwork, data: Dataset,
-                 prior: DirichletPrior | None = None,
+                 prior: DirichletPrior | None = None, point: Literal["mean", "map"] = "mean",
                  max_iterations: int = 200, tolerance: float = 1e-8) -> None: ...
     def run(self, initial: BayesianNetwork | None = None, seed: int | None = None) -> EMResult: ...
+    def step(self, model: BayesianNetwork) -> BayesianNetwork: ...     # one E-step + M-step
+    def initial_model(self, seed: int | None = None) -> BayesianNetwork: ...  # Dir(1) columns
+
+def expected_counts(model: BayesianNetwork, data: Dataset) -> dict[str, np.ndarray]: ...
 
 @dataclass(frozen=True)
 class EMResult:
     model: BayesianNetwork
-    log_likelihood: tuple[float, ...]   # observed-data log L after every iteration
+    log_likelihood: tuple[float, ...]   # observed-data log L: entry 0 initial, entry t after iteration t
+    log_objective: tuple[float, ...]    # what EM never decreases: log L, or log L + log prior (em.md §7)
     converged: bool
     iterations: int
 ```
@@ -166,7 +173,7 @@ the right call. Rows with identical observed values share one calibration.
 | ID | Statement |
 |---|---|
 | M1 | The expected counts equal the brute-force posterior expectation over every completion of each row. |
-| M2 | **Monotonicity:** the observed-data log-likelihood never decreases between iterations (to within $10^{-10}$). With a prior, the log-posterior never decreases. |
+| M2 | **Monotonicity:** the observed-data log-likelihood never decreases between iterations (to within $10^{-10}$). With a prior, the log-posterior never decreases: for MAP under $\mathrm{Dir}(\alpha)$, and for the posterior mean under $\mathrm{Dir}(\alpha+1)$, since the mean under $\alpha$ is the MAP under $\alpha+1$. The log-likelihood itself may then decrease. |
 | M3 | On complete data, EM reaches the MLE after one iteration and then stops. |
 | M4 | The first iteration on fixture F3 gives the exact fractions in §4. |
 | M5 | **Symmetric initialisation is a fixed point:** in a latent-class model, if every $P(F_j\mid C)$ is the same for all classes, EM never breaks the symmetry. Proved, and checked exactly. |
@@ -330,7 +337,7 @@ examples/
 | 3 | Prior specification | **`uniform(alpha)`, `bdeu(ess)` and `explicit(...)`** | Covers K2/Laplace, the score-equivalent prior, and full control |
 | 4 | Point estimate from the posterior | **The posterior mean by default**; MAP on request (only when every $\alpha\ge1$) | The mean is always defined for $\alpha>0$; the mode is not |
 | 5 | E-step engine | **`JunctionTree` per distinct observed pattern** (rows grouped) | Exact, and log-space safe for long rows; reuses M3; grouping makes repeated patterns free |
-| 6 | EM stopping rule | **Absolute change in observed-data $\log L$ below `tolerance`, or `max_iterations`**; the full history is reported | Honest, as in loopy BP; the history lets tests check monotonicity |
+| 6 | EM stopping rule | **Absolute change in the objective EM ascends (observed-data $\log L$, or the log-posterior with a prior) below `tolerance`, or `max_iterations`**; the full history is reported | Honest, as in loopy BP; the history lets tests check monotonicity |
 | 7 | Missingness assumption | **MAR, documented and assumed**; no MNAR | MAR is what makes ignoring the missingness mechanism valid (P16) |
 | 8 | Include model selection (task 8)? | **Yes, last and cuttable** | Small, and reuses P4's parameter count |
 | 9 | Learning Markov network parameters | **Deferred** | No closed form; it needs gradient methods with inference inside each step |

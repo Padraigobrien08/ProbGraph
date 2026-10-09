@@ -15,7 +15,12 @@ from numpy.typing import ArrayLike
 from probgraph.distributions import TabularCPD
 from probgraph.exceptions import ValidationError
 from probgraph.learning.dataset import Dataset
-from probgraph.learning.likelihood import _check_variables, _describe_columns, _parents_in_order
+from probgraph.learning.likelihood import (
+    _check_variables,
+    _describe_columns,
+    _family_counts,
+    _parents_in_order,
+)
 from probgraph.models import BayesianNetwork
 from probgraph.variables import DiscreteVariable
 
@@ -93,21 +98,29 @@ def bayesian_estimate(
     mode (N + α - 1) / (N(u) + α· - |X|). It needs every prior α >= 1, and it
     raises for a column whose posterior is flat (no data and α = 1).
     """
-    if point not in ("mean", "map"):
-        raise ValidationError(f"point must be 'mean' or 'map', got {point!r}.")
+    _check_point(point)
     _check_variables(structure.variables, data)
     if not data.is_complete:
         raise ValidationError(
             f"bayesian_estimate needs complete data, but {data.missing_count} values are "
             "missing; use ExpectationMaximisation (P16) with a prior instead."
         )
+    return _posterior_from_counts(structure, _family_counts(structure, data), prior, point)
+
+
+def _posterior_from_counts(
+    structure: BayesianNetwork,
+    family_counts: Mapping[str, np.ndarray],
+    prior: DirichletPrior,
+    point: Point,
+) -> BayesianNetwork:
+    """The posterior mean or MAP of Dir(α + N) for (possibly expected) family counts."""
     model = BayesianNetwork(structure.variables, structure.edges())
     flat: list[str] = []
     for variable in structure.variables:
         parents = _parents_in_order(structure, variable.name)
-        counts = data.counts([variable.name, *(p.name for p in parents)]).values
         alpha = prior.pseudocounts(variable, parents)
-        posterior = counts + alpha
+        posterior = family_counts[variable.name] + alpha
         if point == "mean":
             theta = posterior / posterior.sum(axis=0, keepdims=True)
         else:
@@ -149,10 +162,11 @@ def log_marginal_likelihood(
             f"log_marginal_likelihood needs complete data, but {data.missing_count} values are "
             "missing."
         )
+    family_counts = _family_counts(structure, data)
     total = 0.0
     for variable in structure.variables:
         parents = _parents_in_order(structure, variable.name)
-        counts = data.counts([variable.name, *(p.name for p in parents)]).values
+        counts = family_counts[variable.name]
         alpha = prior.pseudocounts(variable, parents)
         alpha_total = alpha.sum(axis=0)
         total += float(
@@ -163,6 +177,11 @@ def log_marginal_likelihood(
 
 
 _lgamma = np.vectorize(math.lgamma, otypes=[np.float64])
+
+
+def _check_point(point: str) -> None:
+    if point not in ("mean", "map"):
+        raise ValidationError(f"point must be 'mean' or 'map', got {point!r}.")
 
 
 def _positive(value: float, name: str) -> float:

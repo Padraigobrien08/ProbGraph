@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import itertools
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Literal
 
 import numpy as np
@@ -75,11 +75,31 @@ def maximum_likelihood(
             f"maximum_likelihood needs complete data, but {data.missing_count} values are "
             "missing; use ExpectationMaximisation (P16) instead."
         )
+    return _mle_from_counts(structure, _family_counts(structure, data), unseen)
+
+
+def _family_counts(structure: BayesianNetwork, data: Dataset) -> dict[str, np.ndarray]:
+    """N(x, u) for every family, shape (|X|, |U_1|, ...) with parents in declaration order."""
+    return {
+        v.name: data.counts(
+            [v.name, *(p.name for p in _parents_in_order(structure, v.name))]
+        ).values
+        for v in structure.variables
+    }
+
+
+def _mle_from_counts(
+    structure: BayesianNetwork,
+    family_counts: Mapping[str, np.ndarray],
+    unseen: Unseen = "raise",
+    remedy: str = "Use a Dirichlet prior, or pass unseen='uniform'.",
+) -> BayesianNetwork:
+    """θ(x | u) = N(x, u) / N(u) from (possibly expected, fractional) family counts."""
     model = BayesianNetwork(structure.variables, structure.edges())
     undetermined: list[str] = []
     for variable in structure.variables:
         parents = _parents_in_order(structure, variable.name)
-        counts = data.counts([variable.name, *(p.name for p in parents)]).values
+        counts = family_counts[variable.name]
         n_u = counts.sum(axis=0, keepdims=True)
         empty = n_u == 0
         if empty.any() and unseen == "raise":
@@ -90,7 +110,7 @@ def maximum_likelihood(
     if undetermined:
         raise ValidationError(
             f"No data for {undetermined}: the MLE of those CPD columns is undefined "
-            "(likelihood.md §6). Use a Dirichlet prior, or pass unseen='uniform'."
+            f"(likelihood.md §6). {remedy}"
         )
     return model
 
