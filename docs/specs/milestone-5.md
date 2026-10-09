@@ -1,9 +1,11 @@
-# ProbGraph — Milestone 5 Technical Specification (v1.0)
+# ProbGraph — Milestone 5 Technical Specification (v1.1)
 
 **Milestone:** Temporal models: hidden Markov models, forward–backward, max-product (Viterbi and
 MPE), and Baum–Welch.
 **Release target:** `v0.5.0`.
 **Status:** Accepted 2026-10-09. All §9 decisions are confirmed with their proposed defaults.
+**v1.1 (M5.3):** ⚑3 revised: both sweeps run the normalised recursion in log space. Searching extreme
+models found linear (scaled) arithmetic wrong by up to 1.0 (forward_backward.md §4).
 **Primary objective:** Model sequences with a hidden Markov chain. Compute filtered, smoothed and
 predicted beliefs, the most probable hidden path, and the parameters from unlabelled sequences.
 Prove that each algorithm is a known one from Milestones 2–4 specialised to a chain, and test it
@@ -311,7 +313,7 @@ examples/
 |---|---|---|---|
 | 1 | Model class | **A dedicated homogeneous `HiddenMarkovModel`** (one hidden, one observed variable), with `to_bayesian_network` as the bridge; general DBNs only in optional task 8 | Fast $O(TK^2)$ algorithms need the chain structure; the unrolled network keeps every M1–M4 tool available as an oracle |
 | 2 | Inference API | **An engine computed once, `ForwardBackward(model, observations)`**, plus functions `viterbi` and `posterior_decode` | Matches `JunctionTree(model, evidence)`; one pass serves every query |
-| 3 | Numerics | **Normalised (scaled) forward–backward**, with $\log P(y)=\sum\log c_t$; Viterbi in log space (max-sum) | Exact up to rounding, cheaper than log-sum-exp, and the scaled beliefs are the filtered posteriors themselves; log space is natural for max |
+| 3 | Numerics | **Normalised forward–backward carried in log space** (log-sum-exp), with $\log P(y)=\sum\log c_t$; Viterbi in log space (max-sum). *(v1.1: originally linear scaling, which is cheaper but was found wrong by up to 1.0 on extreme models.)* | Every representable probability survives as a logarithm; products cannot flush a later-decisive state to 0 |
 | 4 | Missing observations | **`None` gives an emission factor of 1** | Same MAR semantics as M4; matches the unrolled network with $Y_t$ unobserved |
 | 5 | Conventions | **`initial` is $P(X_1)$; `transition[i, j]` $=P(X_{t+1}=j\mid X_t=i)$ (rows sum to 1)** | The standard HMM convention; R&N's $P(X_0)$ form is one prediction step away |
 | 6 | MAP scope | **MPE (max over all unobserved variables) by max-product VE**, plus Viterbi; marginal MAP deferred | MPE has the same complexity as VE; marginal MAP needs constrained orders and is NP^PP-hard |

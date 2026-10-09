@@ -311,9 +311,10 @@ def test_extreme_parameters_match_log_space_elimination(seed):
 
 
 @pytest.mark.parametrize("seed", [112, 706, 2173])
-def test_subnormal_step_totals_use_the_log_space_fallback(seed):
-    """Found by search: one step's scaled total is subnormal (1e-308 to 1e-314), where a
-    float carries only a few significant digits. The log-space fallback keeps 12 (§4)."""
+def test_subnormal_step_totals_are_exact_in_log_space(seed):
+    """Found by search: one step's linear total is subnormal (1e-308 to 1e-314), where a float
+    carries only a few significant digits; linear arithmetic filtered seed 2173 to the wrong
+    state. The log-space recursion is exact to 1e-13 (forward_backward.md §4)."""
     model = extreme_hmm(seed)
     rng = np.random.default_rng(seed + 1000)
     ys = [str(model.observed.states[int(i)]) for i in rng.integers(0, 3, size=6)]

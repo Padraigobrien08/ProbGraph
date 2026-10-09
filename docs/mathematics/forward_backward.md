@@ -8,7 +8,8 @@
 > sequence, and the normalisers multiply to the likelihood.
 >
 > - **Part 1 (M5.2):** the forward sweep: filtering and the likelihood.
-> - **Part 2 (M5.3):** the backward sweep: smoothing, pairwise posteriors and prediction.
+> - **Part 2 (M5.3):** the backward sweep: smoothing, pairwise posteriors and prediction, and the
+>   equivalence with Shafer–Shenoy.
 
 Prerequisites: P6 (variable elimination), P9 (log space), P12 (message passing), P18 (HMMs).
 
@@ -70,25 +71,33 @@ probability, typically of order 1. The tiny joint probability lives only in the 
 (P18 §4), and multiplying by $e_t$ and normalising is Bayes' rule. Filtering alternates
 *predict* and *update*.
 
-## 4. Exact zeros and very small emissions (F6)
+## 4. Carrying the recursion in log space, and exact zeros (F6)
 
-If $c_t=0$, then $P(y_{1:t})=0$: the sequence is impossible. Then `log_likelihood` is $-\infty$, and
-the beliefs, which would be conditional on an impossible event, raise
-`ZeroProbabilityEvidenceError`.
+Normalising keeps $f_t$ summing to 1, but that alone does not make linear arithmetic safe. Each
+entry of $a_t=(f_{t-1}A)\circ e_t$ is a product, and when the model has very small transition or
+emission probabilities, a product can underflow even though the state it belongs to has a
+representable, and later decisive, probability. Two failures were found by searching 3,000 random
+models whose entries reach down to $e^{-760}$:
 
-One step can still underflow when the sequence is possible: an emission probability can be
-subnormal (say $10^{-320}$), and subnormal numbers carry only a few significant digits. Two
-measures keep the arithmetic exact up to rounding:
+- A step whose total $\sum_ia_t(i)$ is subnormal ($10^{-308}$ to $10^{-314}$). There a float carries
+  only a few significant digits, and one filtered belief came out on the wrong state: an error of 1.0.
+  Scaling each $e_t$ by its maximum (an earlier design) did not prevent this.
+- A filtered entry of $7.6\times10^{-124}$, which is representable, that a product flushed to 0. Later
+  evidence makes that state nearly certain: its smoothed probability is about 1. The information
+  lost going forward cannot be recovered going backward.
 
-1. **Scale the evidence vector by its maximum.** Write $e_t=m_t\,\tilde e_t$ with
-   $m_t=\max_ie_t(i)$, so $\max_i\tilde e_t(i)=1$. Then
-   $c_t=m_t\sum_i(f_{t-1}A)_i\tilde e_t(i)$, and $\log c_t=\log m_t+\log\tilde c_t$. The factor
-   $m_t$ cancels from $f_t$, and its logarithm is computed directly, never from a subnormal product.
-2. **A log-space fallback.** If $\tilde c_t$ is still below $10^{-280}$, the step is redone with
-   log-sum-exp (P9): $\log\tilde c_t=\operatorname{lse}_i\big(\log(f_{t-1}A)_i+\log\tilde e_t(i)\big)$,
-   which is $-\infty$ exactly when every term is.
+So the library carries the **same normalised recursion** of Proposition 2, but as logarithms (P9):
+$$\log\big(f_{t-1}A\big)_j=\operatorname{lse}_i\big(\log f_{t-1}(i)+\log A_{ij}\big),\qquad
+\log c_t=\operatorname{lse}_j\big(\log(f_{t-1}A)_j+\log e_t(j)\big),$$
+$$\log f_t=\log(f_{t-1}A)+\log e_t-\log c_t.$$
+Log-sum-exp with the max shift never overflows, and it underflows only for terms that are
+negligible next to the largest one. Every probability that a float can represent survives as its
+logarithm. The cost is still $O(TK^2)$; only the constant grows.
 
-So $c_t=0$ is reported only when the sequence is truly impossible.
+**Exact zeros.** $\log c_t=-\infty$ exactly when every term is $-\infty$, that is, when
+$P(y_{1:t})=0$. The sequence is impossible, `log_likelihood` is $-\infty$, and the beliefs, which
+would be conditional on an impossible event, raise `ZeroProbabilityEvidenceError`. A missing
+observation contributes $\log c_t=0$ exactly.
 
 ## 5. How the tests check this independently
 
@@ -98,8 +107,96 @@ So $c_t=0$ is reported only when the sequence is truly impossible.
 - **Step likelihoods:** $c_t=P(y_{1:t})/P(y_{1:t-1})$.
 - **F4:** 5,000 steps against exact rational arithmetic, while the unnormalised recursion returns 0.
 - **Extreme parameters:** 40 random models with entries spread down to $e^{-760}$, against log-space
-  VE. Three more, found by searching 3,000 models, have a step whose scaled total is subnormal. Without
-  the log-space fallback, one of them filters to the wrong state entirely (an error of 1.0); with it,
-  every belief agrees with VE to $10^{-13}$.
+  VE, and the cases found by search (§4), where linear arithmetic is wrong by up to 1.0. Every belief
+  agrees with VE to $10^{-12}$ or better.
 - **F6:** impossible sequences give $-\infty$ and raise on access; missing everything gives
   $\log P=0$ and $f_t=\pi A^{t-1}$.
+
+---
+
+# Part 2 — Smoothing, pairwise posteriors and prediction
+
+## 6. The backward recursion
+
+Define $\beta_t(i)=P(y_{t+1:T}\mid X_t=i)$, the probability of the evidence still to come, given the
+current state. By convention $\beta_T=\mathbf 1$.
+
+**Proposition 3.** $\beta_t=A\,(e_{t+1}\circ\beta_{t+1})$, as a column vector.
+
+*Proof.* Sum over the next state. Given $X_{t+1}$, the observation $y_{t+1}$ and the later evidence
+$y_{t+2:T}$ are independent of $X_t$ and of each other (P18 §3). So
+$$\beta_t(i)=\sum_jP(X_{t+1}=j\mid X_t=i)\,P(y_{t+1}\mid X_{t+1}=j)\,P(y_{t+2:T}\mid X_{t+1}=j)
+=\sum_jA_{ij}\,e_{t+1}(j)\,\beta_{t+1}(j).\qquad\square$$
+
+## 7. Smoothing and pairwise posteriors
+
+**Proposition 4.** For every $t$,
+$$P(X_t=i\mid y_{1:T})\propto f_t(i)\,\beta_t(i),$$
+$$P(X_t=i,X_{t+1}=j\mid y_{1:T})\propto f_t(i)\,A_{ij}\,e_{t+1}(j)\,\beta_{t+1}(j),$$
+where each right side is normalised over its arguments: over $i$, and over $(i,j)$.
+
+*Proof.* By the Markov property, the past evidence and the future evidence are independent
+given $X_t$, so $P(X_t=i,y_{1:T})=\alpha_t(i)\beta_t(i)$, and $\alpha_t\propto f_t$. Likewise
+$P(X_t=i,X_{t+1}=j,y_{1:T})=\alpha_t(i)A_{ij}e_{t+1}(j)\beta_{t+1}(j)$, because given $X_{t+1}$ the
+future after $t+1$ is independent of everything before. Dividing by $P(y_{1:T})$ gives the
+posteriors, and $\alpha_t$ differs from $f_t$ by a constant that the normalisation removes. $\square$
+
+At $t=T$, $\beta_T=\mathbf1$, so the last smoothed belief **is** the last filtered belief.
+
+**Consistency (F3).** Summing the pairwise posterior over $j$ gives the smoothed belief at $t$,
+and summing over $i$ gives the smoothed belief at $t+1$. Both are marginals of one joint
+distribution.
+
+## 8. Normalising the backward sweep
+
+Proposition 4 uses $\beta_t$ only **up to a positive constant per step**: any constant cancels in the
+normalisation. So the library propagates $\log b_t=\log\beta_t-\lambda_t$, with $\lambda_t$ chosen so that
+$\max_i\log b_t(i)=0$, by log-sum-exp (P9):
+$$\log b_t(i)=\operatorname{lse}_j\big(\log A_{ij}+\log e_{t+1}(j)+\log b_{t+1}(j)\big)-\lambda_t.$$
+Unlike the filtered beliefs, which are probabilities summing to 1, the entries of $\beta_t$ can differ
+by any factor at all: a state from which the remaining evidence is nearly impossible has a tiny
+$\beta_t(i)$. Log space keeps every such ratio, where a linear message scaled to maximum 1 would flush
+the small entries to zero. The recursion uses none of the forward pass's constants $c_t$, so the two
+sweeps cannot share an error.
+
+The smoothed and pairwise posteriors are then normalised exponentials (softmax) of
+$\log f_t+\log b_t$ and of $\log f_t(i)+\log A_{ij}+\log e_{t+1}(j)+\log b_{t+1}(j)$. Every entry of
+$\log b_t$ is finite where it matters: for a possible sequence,
+$\sum_i\alpha_t(i)\beta_t(i)=P(y_{1:T})>0$.
+
+## 9. Equivalence with Shafer–Shenoy (P12)
+
+Unroll the HMM and reduce by the observed $Y_t$. The cliques of the chain's junction tree are
+$C_t=\{X_t,X_{t+1}\}$, joined in a path $C_1-C_2-\cdots-C_{T-1}$ with separators $\{X_{t+1}\}$. Give
+$C_t$ the potential $\psi_t(i,j)=A_{ij}\,e_{t+1}(j)$, and $C_1$ the extra factor $\pi\circ e_1$.
+Then:
+
+- The message from $C_{t-1}$ to $C_t$ is $\sum_{x_{t-1}}(\ldots)=\alpha_t$: the **forward** variable.
+- The message from $C_{t+1}$ to $C_t$ is $\sum_{x_{t+2}}\psi_{t+1}\cdot(\ldots)=\beta_{t+1}$: the
+  **backward** variable.
+- The belief of $C_t$ is $\alpha_t(i)A_{ij}e_{t+1}(j)\beta_{t+1}(j)$, which is Proposition 4's pairwise table.
+
+So forward–backward is Shafer–Shenoy on this tree, with the messages normalised. The tests compare
+it with `JunctionTree` on the unrolled network. Calibration costs $2(T-2)$ messages of $O(K^2)$
+each, which is the same $O(TK^2)$ as above.
+
+## 10. Prediction (F5)
+
+$P(X_{T+k}\mid y_{1:T})=f_TA^k$: start from the last filtered belief and run the chain forward
+with no evidence (P18 §4), one step at a time. For an irreducible aperiodic chain, this converges
+geometrically to the stationary distribution (P18 §6). The filtered belief is forgotten at the
+rate of the second eigenvalue. For the umbrella world after $u_1,u_2$:
+$$P(\text{rain}_{2+k}\mid u_1,u_2)=\tfrac12+0.4^k\big(\tfrac{621}{703}-\tfrac12\big).$$
+
+## 11. How the tests check Part 2
+
+- **Fixture F1:** $P(\text{rain}_1\mid u_1,u_2)=621/703$, and the five-day smoothed beliefs, as exact
+  fractions.
+- **Brute force and the junction tree:** smoothed and pairwise posteriors on random models with
+  missing values; pairwise against `JunctionTree.query([X_t, X_{t+1}])`.
+- **Consistency:** the marginals of the pairwise posteriors agree with the smoothed beliefs, and the
+  last smoothed belief equals the last filtered one.
+- **Prediction:** the exact $0.4^k$ formula, agreement with the unrolled network, and convergence to
+  `stationary_distribution()`.
+- **Extreme parameters:** smoothing against log-space VE, including cases found by search where the
+  backward fallback is needed.
