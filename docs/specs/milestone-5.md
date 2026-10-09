@@ -272,15 +272,15 @@ New files: `docs/mathematics/markov_chains.md`, `forward_backward.md`, `max_prod
 
 ## 7. Acceptance criteria for Milestone 5
 
-- [ ] Unrolling is exact, and sampled sequences pass statistical tests.
-- [ ] Filtering, smoothing, pairwise posteriors and the likelihood match brute force and the junction tree on the unrolled network.
-- [ ] 5,000-step sequences give the exact log-likelihood where the unnormalised recursion underflows (to 0, or to a stuck subnormal).
-- [ ] Prediction converges to the stationary distribution at the proven rate.
-- [ ] Max-product VE finds the MPE on random networks; Viterbi equals the unrolled MPE and brute force.
-- [ ] Posterior decoding is shown to produce an impossible path where Viterbi does not.
-- [ ] One Baum–Welch iteration on F3 matches the exact fractions; the objective never decreases; expected counts match M4's EM on the unrolled network.
-- [ ] Proofs P18–P21 (and P22 if task 8 is done) are documented.
-- [ ] `v0.5.0` installs fresh and passes CI.
+- [x] Unrolling is exact, and sampled sequences pass statistical tests.
+- [x] Filtering, smoothing, pairwise posteriors and the likelihood match brute force and the junction tree on the unrolled network.
+- [x] 5,000-step sequences give the exact log-likelihood where the unnormalised recursion underflows (to 0, or to a stuck subnormal).
+- [x] Prediction converges to the stationary distribution at the proven rate.
+- [x] Max-product VE finds the MPE on random networks; Viterbi equals the unrolled MPE and brute force.
+- [x] Posterior decoding is shown to produce an impossible path where Viterbi does not.
+- [x] One Baum–Welch iteration on F3 matches the exact fractions; the objective never decreases; expected counts match M4's EM on the unrolled network.
+- [x] Proofs P18–P21 (and P22 if task 8 is done) are documented.
+- [ ] `v0.5.0` installs fresh and passes CI. *(Ticked when the tagged commit's CI run passes.)*
 
 ---
 

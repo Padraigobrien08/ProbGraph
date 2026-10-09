@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.5.0 — Milestone 5: temporal models
+
+### Added
+- `probgraph.temporal`, a new subpackage.
+- `HiddenMarkovModel`: validated, homogeneous discrete HMMs, with `sample`,
+  `to_bayesian_network(T)` (exact unrolling), `stationary_distribution` (which names
+  the closed classes when it is not unique) and `n_free_parameters`.
+- `ForwardBackward`: `filtered`, `smoothed`, `pairwise`, `predict(k)`,
+  `log_likelihood` and `step_log_likelihoods` in O(TK²). Missing observations are
+  `None`. Impossible sequences give −∞ and raise on access.
+- `VariableElimination.most_probable_explanation`: the MPE by max-product (max-sum)
+  elimination with traceback, for any Bayesian network.
+- `viterbi` and `posterior_decode`.
+- `BaumWelch`, `BaumWelchResult`, `HMMCounts` and `supervised_estimate`: EM with
+  parameters tied across time, for many sequences, with optional pseudocounts and a
+  `log_objective` history.
+- `DynamicBayesianNetwork` (2-TBNs) and `previous`, with a derived `interface`,
+  `from_hmm` and `unroll(T)`.
+- Proofs P18–P22 in `docs/mathematics/`, and `examples/umbrella_world.py`.
+
+### Notes
+- Forward–backward runs the normalised recursion **in log space**. The spec first
+  chose linear scaling, but a search of extreme models found it wrong by up to 1.0. The
+  textbook unnormalised recursion is worse: for 5,000 steps it sticks at the smallest
+  subnormal, 5e-324, and reports log P ≈ −744 for a true −2069.6, with no error.
+- Barren pruning is invalid for MPE: max_x P(x | u) depends on u. So the MPE never
+  prunes, and with a missing observation the unrolled MPE differs from Viterbi.
+- Posterior decoding can return a path of probability zero; Viterbi cannot.
+- Baum–Welch sums missing observations out, whereas M4's EM fills them in. Both are
+  valid EM with the same fixed points.
+- Near its symmetric saddle, Baum–Welch can report convergence 70 nats below the
+  optimum. Use several random starts.
+
 ## 0.4.0 — Milestone 4: learning from data
 
 ### Added

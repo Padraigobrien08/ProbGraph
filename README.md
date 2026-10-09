@@ -2,17 +2,18 @@
 
 Discrete probabilistic graphical models built from first principles: Bayesian
 networks and Markov networks, factorisation, sampling, d-separation, variable
-elimination, clique trees and message passing, all computed in log space, and learning
-their parameters and structure from data, including data with missing values. No graph or
+elimination, clique trees and message passing, all computed in log space; learning
+their parameters and structure from data, including data with missing values; and hidden
+Markov models and dynamic Bayesian networks over time. No graph or
 graphical-model library is used, and NumPy is used only for array storage and
 arithmetic. Every algorithm comes with a written mathematical justification and
 with tests designed to fail if the implementation is subtly wrong.
 
-**Status:** `v0.4.0`, which completes Milestone 4: learning from data (maximum
-likelihood, Dirichlet priors and the Bayesian score, EM for missing values, and structure
-scores). Earlier releases: `v0.3.0` (Milestone 3: message passing), `v0.2.0` (Milestone 2:
-conditional independence, evidence and exact inference) and `v0.1.0` (Milestone 1:
-representation, factorisation and sampling).
+**Status:** `v0.5.0`, which completes Milestone 5: temporal models (hidden Markov models,
+forward–backward, Viterbi and the most probable explanation, Baum–Welch, and dynamic
+Bayesian networks). Earlier releases: `v0.4.0` (Milestone 4: learning from data), `v0.3.0`
+(Milestone 3: message passing), `v0.2.0` (Milestone 2: conditional independence, evidence and
+exact inference) and `v0.1.0` (Milestone 1: representation, factorisation and sampling).
 
 > **Changed in v0.3.0:** `VariableElimination` now computes in log space by default. In
 > v0.2.0, enough evidence to push P(e) below float64's range (about 10⁻³²⁴) could make it
@@ -101,7 +102,32 @@ result.converged, result.iterations  # (True, 23); result.log_likelihood never d
 bic(model, data) > bic(BayesianNetwork(model.variables, [("Rain", "Traffic")]), data)  # True
 ```
 
-Four complete walkthroughs:
+Sequences with a hidden Markov model:
+
+```python
+from probgraph.temporal import BaumWelch, ForwardBackward, HiddenMarkovModel, viterbi
+
+weather = DiscreteVariable("Weather", ("rain", "dry"))
+umbrella = DiscreteVariable("Umbrella", ("umbrella", "none"))
+hmm = HiddenMarkovModel(
+    weather,
+    umbrella,
+    initial=[0.5, 0.5],
+    transition=[[0.7, 0.3], [0.3, 0.7]],
+    emission=[[0.9, 0.1], [0.2, 0.8]],
+)
+fb = ForwardBackward(hmm, ["umbrella", "umbrella"])
+fb.filtered[1, 0], fb.smoothed[0, 0]  # P(rain_2 | u1, u2) = P(rain_1 | u1, u2) = 621/703
+fb.predict(1)[0, 0]  # 0.6533: tomorrow, forgetting at rate 0.4
+viterbi(hmm, ["umbrella", "umbrella", "none", "umbrella", "umbrella"])[0]
+# ['rain', 'rain', 'dry', 'rain', 'rain']
+
+sequences = [hmm.sample(60, seed=s)[1] for s in range(30)]
+bw = BaumWelch(weather, umbrella, sequences, tolerance=1e-4, max_iterations=1000)
+fit = bw.run(seed=0)  # converges after 326 iterations; compare states up to relabelling
+```
+
+Five complete walkthroughs:
 
 - [`examples/rain_accident_traffic.py`](examples/rain_accident_traffic.py) (M1): the
   exact joint table, sampled frequencies compared with exact probabilities, and
@@ -115,6 +141,9 @@ Four complete walkthroughs:
 - [`examples/learning_traffic.py`](examples/learning_traffic.py) (M4): learning the
   late-for-work network back from samples, smoothing small samples, EM with 30% of values
   missing, and ranking structures by BIC.
+- [`examples/umbrella_world.py`](examples/umbrella_world.py) (M5): filtering, smoothing and
+  prediction, why the sweeps run in log space, Viterbi against day-by-day decoding,
+  Baum–Welch, and two weather systems entangled by one umbrella.
 
 ## API
 
@@ -141,6 +170,12 @@ Four complete walkthroughs:
 | `learning.log_marginal_likelihood(structure, data, prior)` | $\log P(D\mid G)$ | the gamma closed form, equal to sequential prediction; BDeu is score-equivalent |
 | `learning.ExpectationMaximisation(structure, data, prior)` | parameters from incomplete data | E-step by junction tree, one per distinct observed pattern; the objective never decreases; the full history is reported |
 | `learning.bic`, `family_scores`, `score_structures` | structure scores | BIC and BDeu; one term per family; equivalent structures tie |
+| `VariableElimination.most_probable_explanation(e)` | $\arg\max_xP(x,e)$ | max-sum elimination and traceback; exact in every order; never prunes barren nodes |
+| `temporal.HiddenMarkovModel(...)` | a homogeneous discrete HMM | validated tables; exact unrolling; sampling; the stationary distribution when it is unique |
+| `temporal.ForwardBackward(model, ys)` | filtered, smoothed, pairwise, predicted beliefs | $O(TK^2)$ in log space; exact for 5,000+ steps; missing observations are `None` |
+| `temporal.viterbi`, `posterior_decode` | decoding | Viterbi is the unrolled MPE; posterior decoding maximises expected correct steps |
+| `temporal.BaumWelch(...)` | HMM parameters from sequences | tied EM; the objective never decreases; many sequences; pseudocounts |
+| `temporal.DynamicBayesianNetwork(initial, transition)` | a 2-TBN | derived interface that d-separates past and future; exact unrolling |
 
 All library errors derive from `probgraph.exceptions.ProbGraphError`.
 
@@ -170,9 +205,15 @@ Each implementation step is justified in [`docs/mathematics/`](docs/mathematics/
 | [dirichlet.md](docs/mathematics/dirichlet.md) | **P15**: conjugacy; posterior mean and MAP; the marginal likelihood as a ratio of normalising constants, equal to sequential prediction; BDeu score equivalence |
 | [em.md](docs/mathematics/em.md) | **P16**: MAR; Jensen's bound; expected counts; monotonicity; fixed points are stationary; MAP-EM; the symmetric latent-class fixed point |
 | [model_selection.md](docs/mathematics/model_selection.md) | **P17**: BIC as a Laplace approximation; decomposability; score equivalence by the entropy chain rule; consistency via Wilks |
+| [markov_chains.md](docs/mathematics/markov_chains.md) | **P18**: HMMs as unrolled networks; tied parameters; stationary distributions and closed classes; geometric forgetting |
+| [forward_backward.md](docs/mathematics/forward_backward.md) | **P19**: filtering, smoothing and prediction; why the recursion runs in log space; equivalence with Shafer–Shenoy |
+| [max_product.md](docs/mathematics/max_product.md) | **P20**: semirings; max-product VE and traceback; why barren pruning fails for MPE; Viterbi; posterior decoding versus MAP |
+| [baum_welch.md](docs/mathematics/baum_welch.md) | **P21**: tied EM; two valid treatments of missing observations; label switching; the symmetric saddle |
+| [dbn.md](docs/mathematics/dbn.md) | **P22**: 2-TBNs; the interface d-separates past and future; entanglement |
 
 The specifications are in [`docs/specs/`](docs/specs/): [Milestone 2](docs/specs/milestone-2.md),
-[Milestone 3](docs/specs/milestone-3.md) and [Milestone 4](docs/specs/milestone-4.md).
+[Milestone 3](docs/specs/milestone-3.md), [Milestone 4](docs/specs/milestone-4.md) and
+[Milestone 5](docs/specs/milestone-5.md).
 
 ## Milestone 1 acceptance
 
@@ -250,24 +291,46 @@ and BIC's equal-parameter-count condition always holds for equivalent structures
 found that `with_missing` and `AncestralSampler` with the same seed shared their uniforms,
 so the "MCAR" mask depended on the values. That is fixed.
 
+## Milestone 5 acceptance
+
+| Criterion | Evidence |
+|---|---|
+| Unrolling is exact, and sampled sequences pass statistical tests | `test_hmm.py` (the joint against the HMM formula for every assignment; transition and emission frequencies within Bernstein bounds) |
+| Filtering, smoothing, pairwise posteriors and the likelihood match brute force and the unrolled junction tree | `test_forward_backward.py`, `test_smoothing.py` (F1 as exact fractions; all $K^T$ paths; `JunctionTree` on the unrolled network) |
+| 5,000-step sequences are exact where the textbook recursion fails | `test_forward_backward.py` (F4 against exact rationals; the stuck subnormal); extreme models found by search, against log-space VE |
+| Prediction converges at the proven rate | `test_smoothing.py` (exactly $\frac12+0.4^k(\ldots)$; convergence to the stationary distribution) |
+| MPE by max-product VE; Viterbi equals the unrolled MPE and brute force | `test_max_product.py` (F5; 80 random networks), `test_viterbi.py` |
+| Posterior decoding can return an impossible path | `test_viterbi.py` (F2; each decoder optimal for its own criterion) |
+| Baum–Welch: F3 exactly; the objective never decreases; counts match M4 on the unrolled network | `test_baum_welch.py`, `test_baum_welch_oracles.py` (brute-force EM step by step; relabelling; Theorem 1) |
+| Proofs P18–P22 are documented | `docs/mathematics/` (the table above) |
+| `v0.5.0` installs fresh and passes CI | `.github/workflows/ci.yml` (unchanged gates, plus all five examples) |
+
+Testing during M5 changed the spec three times (now v1.3):
+- Linear scaling in forward–backward was replaced by log space, after a search of extreme
+  models found it wrong by up to 1.0.
+- The symmetric Baum–Welch fixed point also needs a stationary π.
+- M4's EM fills in missing observations where Baum–Welch sums them out. Both are valid, with
+  the same fixed points.
+
 ## Development
 
 ```bash
-.venv/bin/pytest                      # 3611 tests, about 40 s
+.venv/bin/pytest                      # 4514 tests, about 70 s
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/mypy                        # strict mode, src/ only
 .venv/bin/python examples/rain_accident_traffic.py
 .venv/bin/python examples/late_for_work.py
 .venv/bin/python examples/misconception.py
 .venv/bin/python examples/learning_traffic.py
+.venv/bin/python examples/umbrella_world.py
 ```
 
 ## Scope and limitations
 
 Out of scope so far:
-- continuous variables;
-- MAP / max-product inference;
-- MCMC (Gibbs sampling);
+- continuous variables (Gaussian HMMs, Kalman filters);
+- marginal MAP (maximising some variables while summing out others);
+- MCMC (Gibbs sampling), particle filtering and approximate DBN inference;
 - structure *search* (the scores are here; searching over graphs is not);
 - learning Markov network parameters;
 - data missing not at random (EM assumes MAR).
@@ -280,6 +343,10 @@ Known limitations:
 - EM finds a local optimum that depends on its start; for latent variables, the classes are
   identified only up to relabelling. Each iteration builds one junction tree per distinct
   pattern of observed values, so it is slow when almost every row is different.
+- Baum–Welch shares EM's local optima and label switching, and converges slowly when the
+  observations carry little information about the states. Near its symmetric saddle a
+  tolerance-based stop can report convergence far below the optimum: use several starts.
+- Exact DBN inference costs grow exponentially with the interface (entanglement).
 - Exhaustive enumeration appears only as a test oracle.
 
 ## Licence
