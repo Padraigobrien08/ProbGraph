@@ -278,16 +278,18 @@ as listed: log space first, because every later component computes in it.
 
 ## 7. Acceptance criteria for Milestone 3
 
-- [ ] `LogFactor` matches `DiscreteFactor` under exp, and never overflows or produces NaN.
-- [ ] The F3 underflow regression is fixed: $P(C\mid e)=[0.5,0.5]$ and $\log P(e)\approx-784.91$.
-- [ ] Markov networks: $Z$ for F2 equals 7,201,840; separation implies numerical independence.
-- [ ] BN → MN conversion preserves the distribution, and the lost collider independence is demonstrated.
-- [ ] Every constructed clique tree satisfies the running intersection property (brute force) on all small graphs tested.
-- [ ] One calibration reproduces every M2 fixture posterior and all of F2's marginals as exact fractions.
-- [ ] Calibrated marginals equal VE on random BNs and MNs, with and without evidence.
-- [ ] Calibration answers all marginals at lower measured cost than repeated VE when evidence is downstream (C7 as revised), and the no-evidence counter-case is documented.
-- [ ] Proofs P9–P12 (and P13 if task 8 is done) are documented.
-- [ ] `v0.3.0` installs fresh and passes CI.
+Evidence for each item is mapped in the README's "Milestone 3 acceptance" table.
+
+- [x] `LogFactor` matches `DiscreteFactor` under exp, and never overflows or produces NaN.
+- [x] The F3 underflow regression is fixed: $P(C\mid e)=[0.5,0.5]$ and $\log P(e)\approx-784.91$.
+- [x] Markov networks: $Z$ for F2 equals 7,201,840; separation implies numerical independence.
+- [x] BN → MN conversion preserves the distribution, and the lost collider independence is demonstrated.
+- [x] Every constructed clique tree satisfies the running intersection property (brute force) on all small graphs tested.
+- [x] One calibration reproduces every M2 fixture posterior and all of F2's marginals as exact fractions.
+- [x] Calibrated marginals equal VE on random BNs and MNs, with and without evidence.
+- [x] Calibration answers all marginals at lower measured cost than repeated VE when evidence is downstream (C7 as revised), and the no-evidence counter-case is documented.
+- [x] Proofs P9–P12 (and P13 if task 8 is done) are documented.
+- [ ] `v0.3.0` installs fresh and passes CI. *(Ticked when the tagged commit's CI run passes.)*
 
 ---
 

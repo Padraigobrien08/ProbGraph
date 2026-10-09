@@ -1,15 +1,21 @@
 # ProbGraph
 
-Discrete Bayesian networks built from first principles: DAGs, conditional
-probability tables, factorisation, sampling, d-separation, and exact and
-approximate inference. No graph or
-Bayesian-network library is used, and NumPy is used only for array storage and
+Discrete probabilistic graphical models built from first principles: Bayesian
+networks and Markov networks, factorisation, sampling, d-separation, variable
+elimination, clique trees and message passing, all computed in log space. No graph or
+graphical-model library is used, and NumPy is used only for array storage and
 arithmetic. Every algorithm comes with a written mathematical justification and
 with tests designed to fail if the implementation is subtly wrong.
 
-**Status:** `v0.2.0`, which completes Milestone 2: conditional independence, evidence
-and exact inference. (`v0.1.0` was Milestone 1: representation, factorisation and
-sampling.)
+**Status:** `v0.3.0`, which completes Milestone 3: message passing (Markov networks,
+clique trees, belief propagation, log-space numerics). Earlier releases: `v0.2.0`
+(Milestone 2: conditional independence, evidence and exact inference) and `v0.1.0`
+(Milestone 1: representation, factorisation and sampling).
+
+> **Changed in v0.3.0:** `VariableElimination` now computes in log space by default. In
+> v0.2.0, enough evidence to push P(e) below float64's range (about 10⁻³²⁴) could make it
+> raise an error for possible evidence, or silently return a wrong posterior. Results that
+> did not underflow are unchanged. `space="probability"` restores the old behaviour.
 
 ## Install
 
@@ -59,7 +65,21 @@ model.graph.d_separated({"Accident"}, {"Rain"})  # True: the collider is unobser
 model.graph.d_separated({"Accident"}, {"Rain"}, given={"Traffic"})  # False
 ```
 
-Two complete walkthroughs:
+Every marginal at once with a junction tree, and an undirected model:
+
+```python
+from probgraph import DiscreteFactor, MarkovNetwork
+from probgraph.inference import JunctionTree
+
+JunctionTree(model, {"Traffic": "yes"}).marginals()  # P(Rain | e) and P(Accident | e) together
+
+a, b = DiscreteVariable("A", ("0", "1")), DiscreteVariable("B", ("0", "1"))
+mn = MarkovNetwork([a, b], [DiscreteFactor([a, b], [[30, 5], [1, 10]])])
+mn.partition_function()  # 46.0
+mn.query(["A"]).value({"A": "1"})  # 11/46 ≈ 0.239
+```
+
+Three complete walkthroughs:
 
 - [`examples/rain_accident_traffic.py`](examples/rain_accident_traffic.py) (M1): the
   exact joint table, sampled frequencies compared with exact probabilities, and
@@ -67,6 +87,9 @@ Two complete walkthroughs:
 - [`examples/late_for_work.py`](examples/late_for_work.py) (M2): d-separation, exact
   posteriors, elimination cost and pruning, and sampling estimates checked against
   the exact answers.
+- [`examples/misconception.py`](examples/misconception.py) (M3): a Markov network's
+  partition function, triangulating a 4-cycle, one calibration for every marginal,
+  loopy BP converging to the wrong answer, and why log space matters.
 
 ## API
 
@@ -78,9 +101,15 @@ Two complete walkthroughs:
 | `BayesianNetwork(variables, edges)` | $\prod_i p(x_i\mid\mathrm{pa}_i)$ | CPD parents must equal the graph's parents; variables must match the model's definitions; queries re-validate after any change and require complete assignments |
 | `AncestralSampler(model, seed)` | i.i.d. draws from the joint | samples in topological order; inverse-CDF draws by hand; reproducible; `sample(a) + sample(b) == sample(a+b)` |
 | `DiscreteFactor(variables, values)` | a nonnegative table $\phi(x_S)$ | product aligns by *name*, never by axis position; `marginalise`, `reduce`, `normalise`; immutable; overflow raises |
-| `VariableElimination(model)` | exact $P(Q\mid e)$ and $P(e)$ | equals enumeration for every elimination order; min-fill by default; barren pruning by default, evidence pruning opt-in; `query_trace` shows the cost; impossible evidence raises |
+| `VariableElimination(model)` | exact $P(Q\mid e)$ and $P(e)$ | equals enumeration for every elimination order; log space and min-fill by default; barren pruning by default, evidence pruning opt-in; `query_trace` shows the cost; impossible evidence raises, tiny evidence does not |
 | `DAG.d_separated(xs, ys, given)` | $X\perp_G Y\mid Z$ | Bayes ball in $O(\lvert V\rvert+\lvert E\rvert)$; agrees with the moralised-ancestral criterion |
 | `RejectionSampler`, `LikelihoodWeighting` | sampling estimates of $P(Q\mid e)$ | return the estimate, $\hat P(e)$ and the effective sample size; raise when no sample carries information |
+| `LogFactor(variables, log_values)` | $\log\phi(x_S)$ | products add; log-sum-exp never overflows or produces NaN; `-inf` is a structural zero; never mixes with `DiscreteFactor` |
+| `MarkovNetwork(variables, factors)` | $\frac1Z\prod_k\phi_k$ | $\log Z$ in log space, so $Z\approx10^{400}$ is fine; separation implies independence; `BayesianNetwork.to_markov_network()` keeps the distribution |
+| `triangulate`, `is_chordal`, `maximal_cliques` | chordal graphs | recognition by maximum cardinality search, with every returned order verified; agrees with the definition on all graphs up to 6 vertices |
+| `CliqueTree.from_elimination(graph, order)` | a junction tree | running intersection property; the cliques are exactly the maximal cliques; maximum-weight spanning tree |
+| `JunctionTree(model, evidence)` | every $P(x\mid e)$ at once | Shafer–Shenoy in log space; $2(k-1)$ messages; exact; $\log P(e)$ for free; cross-clique queries refused |
+| `LoopyBeliefPropagation(model)` | approximate marginals | exact on trees; on cycles it may converge to wrong beliefs or oscillate; `converged` is reported honestly |
 
 All library errors derive from `probgraph.exceptions.ProbGraphError`.
 
@@ -101,8 +130,14 @@ Each implementation step is justified in [`docs/mathematics/`](docs/mathematics/
 | [elimination_orders.md](docs/mathematics/elimination_orders.md) | interaction graph = moral graph; factor elimination = vertex elimination; heuristics optimal on forests and chordal graphs |
 | [d_separation.md](docs/mathematics/d_separation.md) | **P7**: Bayes ball and the walk lemma; the moralised-ancestral criterion; soundness; generic completeness (XOR); graphoid axioms; requisite evidence |
 | [sampling_inference.md](docs/mathematics/sampling_inference.md) | **P8**: rejection sampling; likelihood weighting as importance sampling; bias of the ratio estimator; effective sample size |
+| [log_space.md](docs/mathematics/log_space.md) | **P9**: the max-shift lemma for log-sum-exp; the factor laws transfer through the exp isomorphism; exact zero detection |
+| [markov_networks.md](docs/mathematics/markov_networks.md) | **P10**: Gibbs distributions; the global Markov property; moralisation keeps the distribution but loses collider independences; no DAG captures the 4-cycle |
+| [clique_trees.md](docs/mathematics/clique_trees.md) | **P11**: triangulation, perfect elimination orderings, maximum cardinality search, maximal cliques; clique trees exist exactly for chordal graphs; junction trees are the maximum-weight spanning trees |
+| [message_passing.md](docs/mathematics/message_passing.md) | **P12**: Shafer–Shenoy messages as partial eliminations; beliefs are marginals; evidence; measured cost against variable elimination |
+| [loopy_bp.md](docs/mathematics/loopy_bp.md) | **P13**: exact on trees; double counting on cycles; damping keeps the fixed points; convergence is not accuracy |
 
-The Milestone 2 specification is in [`docs/specs/milestone-2.md`](docs/specs/milestone-2.md).
+The specifications are in [`docs/specs/`](docs/specs/): [Milestone 2](docs/specs/milestone-2.md) and
+[Milestone 3](docs/specs/milestone-3.md).
 
 ## Milestone 1 acceptance
 
@@ -140,31 +175,53 @@ value is $0.3565$, and the tests use the corrected value.
 The Milestone 2 spec (v1.0) printed $P(L{=}1,U{=}1)$ as 0.142012. The exact value is
 $11361/80000=0.1420125$, and the tests compare against exact fractions.
 
+## Milestone 3 acceptance
+
+| Criterion | Evidence |
+|---|---|
+| `LogFactor` matches `DiscreteFactor` under exp, and never overflows or produces NaN | `test_log_factor.py` (every operation against probability space; laws directly at magnitudes around ±500; 2⁻¹¹⁰⁰ and $Z\approx10^{400}$) |
+| The F3 underflow regression is fixed | `test_log_space_inference.py` and `test_junction_tree_evidence.py` (P(C \| e) = [0.5, 0.5], log P(e) ≈ −784.91; probability space pinned as unreliable) |
+| Markov networks: $Z$ for F2 is 7,201,840; separation implies independence | `test_markov_network.py` (exact fractions; the global Markov property and generic completeness on random models) |
+| BN → MN keeps the distribution; the lost collider independence is shown | `test_markov_network.py` (Proposition 3 on random DAGs; Proposition 4 over all 543 four-node DAGs) |
+| Clique trees satisfy the running intersection property | `test_clique_tree.py` (brute-force RIP, the closed form $\sum\lvert C_i\rvert-n$, and an independent Kruskal maximum spanning tree); `test_chordal.py` (OEIS A058862 counts on all graphs up to 6 vertices) |
+| One calibration reproduces the M2 posteriors and F2's marginals as exact fractions | `test_junction_tree.py`, `test_junction_tree_evidence.py` |
+| Calibrated marginals equal VE on random BNs and MNs, with and without evidence | the same files (180+ random models, every root and elimination order) |
+| Calibration is cheaper than repeated VE when evidence is downstream | `test_junction_tree_evidence.py` (4–10×). The no-evidence counter-case, where pruned VE wins, is also pinned. |
+| Proofs P9–P13 are documented | `docs/mathematics/` (the table above) |
+| `v0.3.0` installs fresh and passes CI | `.github/workflows/ci.yml` (unchanged gates, plus all three examples) |
+
+Measuring and testing during M3 changed the spec three times (now v1.3). Probability space
+was found to *silently* return wrong posteriors, not merely raise. Variable elimination
+therefore defaults to log space. And the cost claim C7 holds only when evidence is
+downstream.
+
 ## Development
 
 ```bash
-.venv/bin/pytest                      # 1858 tests, about 6 s
+.venv/bin/pytest                      # 2853 tests, about 15 s
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/mypy                        # strict mode, src/ only
 .venv/bin/python examples/rain_accident_traffic.py
 .venv/bin/python examples/late_for_work.py
+.venv/bin/python examples/misconception.py
 ```
 
 ## Scope and limitations
 
 Out of scope so far:
 - continuous variables;
-- undirected models (Markov networks) as a model class;
-- junction trees and message passing;
-- MAP inference;
-- MCMC;
-- learning parameters from data.
+- MAP / max-product inference;
+- MCMC (Gibbs sampling);
+- learning parameters or structure from data.
 
-Exhaustive enumeration appears only as a test oracle. All computation is in
-probability space, so products of very many small probabilities can underflow;
-log-space factors are a candidate for Milestone 3. Variable elimination recomputes
-everything for each query, and caching intermediate messages across queries is
-what junction trees add.
+Known limitations:
+- `JunctionTree.query` answers joint queries only over variables that share a clique. Use
+  `VariableElimination` for the rest.
+- Loopy belief propagation has no accuracy guarantee on graphs with cycles. The tests show it
+  converging to badly wrong beliefs, and oscillating forever without damping.
+- Choosing a greedy elimination order is slow for graphs with a very high-degree variable
+  (min-fill scoring is quadratic in the degree). Bayesian networks avoid the worst case.
+- Exhaustive enumeration appears only as a test oracle.
 
 ## Licence
 

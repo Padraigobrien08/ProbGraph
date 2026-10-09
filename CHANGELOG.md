@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.3.0 — Milestone 3: message passing
+
+### Added
+- `LogFactor`: factors stored as logarithms. Products add, and marginalising uses
+  log-sum-exp with the max shift, so nothing overflows, and an all `-inf` slice gives
+  `-inf`, not NaN. `-inf` encodes a structural zero. `DiscreteFactor` and `LogFactor`
+  now share a `_NamedTable` base class, and mixing the two is a `TypeError`.
+- `VariableElimination`: `space="log" | "probability"`, and `log_probability_of_evidence`.
+- `MarkovNetwork`: Gibbs distributions with `log_partition_function`,
+  `partition_function`, `probability`, `log_probability`, `query`,
+  `log_probability_of_evidence` and `separated`. Also
+  `BayesianNetwork.to_markov_network()`.
+- Chordal graphs: `triangulate`, `is_chordal` and `perfect_elimination_ordering`
+  (maximum cardinality search, with every result verified),
+  `is_perfect_elimination_ordering`, and `maximal_cliques`.
+- `CliqueTree.from_elimination`: clique trees with the running intersection property,
+  and family-preserving `assign`.
+- `JunctionTree`: Shafer–Shenoy calibration in log space. Every marginal comes from one
+  pass of messages, with evidence, `log_probability_of_evidence`, `clique_belief`,
+  `message_count` and `calibration_cost`.
+- `LoopyBeliefPropagation`: synchronous sum-product on the factor graph, with damping and
+  an honest `converged` / `residual` report.
+- Proofs P9–P13 in `docs/mathematics/`, and `examples/misconception.py`.
+
+### Changed
+- **`VariableElimination` now computes in log space by default** (`space="log"`). In
+  probability space, 1,100 observations push P(e) below float64's range. Depending on the
+  order of the evidence, v0.2.0 then either raised `ZeroProbabilityEvidenceError` for
+  possible evidence or **silently returned a confident, wrong posterior** ([0, 1] where
+  the truth is [0.5, 0.5]). Results that did not underflow are unchanged to about 1e-12.
+  Pass `space="probability"` for the previous behaviour.
+
+### Fixed
+- The strict mypy check under NumPy 2.4, the newest version supporting Python 3.11.
+
+### Notes
+- A junction tree is cheaper than repeated variable elimination when evidence is
+  downstream (4–10× in the tests). Without evidence, pruned variable elimination is often
+  cheaper on sparse models (see `message_passing.md` §9).
+- Loopy belief propagation can converge to badly wrong beliefs (the misconception cycle),
+  or oscillate forever without damping (a 3×3 grid). Convergence is not accuracy.
+
 ## 0.2.0 — Milestone 2: conditional independence, evidence and exact inference
 
 ### Added
