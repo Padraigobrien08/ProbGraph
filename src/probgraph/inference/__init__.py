@@ -1,3 +1,4 @@
+from probgraph.inference.clique_tree import CliqueTree
 from probgraph.inference.elimination_order import (
     HEURISTICS,
     EliminationStep,
@@ -10,6 +11,7 @@ from probgraph.inference.variable_elimination import VariableElimination
 
 __all__ = [
     "HEURISTICS",
+    "CliqueTree",
     "EliminationStep",
     "EliminationTrace",
     "Heuristic",
