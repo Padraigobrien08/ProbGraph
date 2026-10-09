@@ -95,6 +95,13 @@ class TabularCPD:
         return tuple(p.name for p in self._parents)
 
     @property
+    def n_free_parameters(self) -> int:
+        """(|X| - 1) * prod_j |U_j|: one point of the simplex per parent configuration (P4)."""
+        return (self._variable.cardinality - 1) * int(
+            np.prod([p.cardinality for p in self._parents])
+        )
+
+    @property
     def values(self) -> np.ndarray:
         """A read-only view of the table. It cannot be made writable again."""
         return self._values.view()

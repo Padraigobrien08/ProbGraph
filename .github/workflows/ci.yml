@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: |
+          uv venv
+          uv pip install -e ".[dev]"
+      - name: Lint
+        run: |
+          .venv/bin/ruff check .
+          .venv/bin/ruff format --check .
+      - name: Type check
+        run: .venv/bin/mypy
+      - name: Test
+        run: .venv/bin/pytest
+      - name: Run example
+        run: .venv/bin/python examples/rain_accident_traffic.py
+
+  oldest-dependencies:
+    name: Oldest supported dependencies (Python 3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+      - name: Install with lowest direct dependency versions
+        run: |
+          uv venv
+          uv pip install --resolution lowest-direct -e ".[dev]"
+          .venv/bin/python -c "import numpy; print('numpy', numpy.__version__)"
+      - name: Test
+        run: .venv/bin/pytest
+
+  fresh-install:
+    name: Fresh install from ${{ matrix.dist }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dist: [wheel, sdist]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: uv build
+      - name: Install the built distribution into a clean environment
+        run: |
+          uv venv /tmp/fresh
+          if [ "${{ matrix.dist }}" = wheel ]; then dist=$(ls dist/*.whl); else dist=$(ls dist/*.tar.gz); fi
+          uv pip install --python /tmp/fresh/bin/python "$dist" pytest hypothesis
+      - name: Run the test suite against the installed package
+        run: |
+          # Copy the tests outside the checkout so that src/ cannot be imported by accident.
+          mkdir -p /tmp/fresh-tests
+          cp -r tests pyproject.toml /tmp/fresh-tests/
+          cd /tmp/fresh-tests
+          /tmp/fresh/bin/python -c "import probgraph, sys; assert 'site-packages' in probgraph.__file__, probgraph.__file__; print(probgraph.__file__)"
+          /tmp/fresh/bin/python -m pytest -p no:cacheprovider

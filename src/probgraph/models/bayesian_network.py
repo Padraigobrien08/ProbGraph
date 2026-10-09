@@ -87,6 +87,17 @@ class BayesianNetwork:
         return DAG(nodes=self._dag.nodes(), edges=self._dag.edges())
 
     @property
+    def n_free_parameters(self) -> int:
+        """sum_i (|X_i| - 1) * prod_{j in pa(i)} |X_j|. Depends only on the structure (P4)."""
+        total = 0
+        for name, variable in self._variables.items():
+            columns = 1
+            for parent in self._dag.parents(name):
+                columns *= self._variables[parent].cardinality
+            total += (variable.cardinality - 1) * columns
+        return total
+
+    @property
     def cpds(self) -> Mapping[str, TabularCPD]:
         """A read-only snapshot of the CPDs attached so far, keyed by variable name."""
         return MappingProxyType(dict(self._cpds))
