@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from support import RAIN, TRAFFIC, traffic_cpd
+from support import RAIN, TRAFFIC, evidence_for, factors, traffic_cpd
 
 from probgraph import DiscreteFactor, DiscreteVariable
 from probgraph.exceptions import NormalisationError, UnknownStateError, ValidationError
@@ -357,32 +357,6 @@ def test_cpd_factor_sums_to_one_over_child():
 # ---------------------------------------------------------------------------
 # Property-based tests on random factors
 # ---------------------------------------------------------------------------
-
-POOL = [
-    DiscreteVariable("V0", ("s0", "s1")),
-    DiscreteVariable("V1", ("s0", "s1", "s2")),
-    DiscreteVariable("V2", ("s0",)),
-    DiscreteVariable("V3", ("s0", "s1")),
-    DiscreteVariable("V4", ("s0", "s1", "s2")),
-]
-
-
-@st.composite
-def factors(draw, pool=tuple(POOL)):
-    scope = draw(st.lists(st.sampled_from(pool), unique_by=lambda v: v.name, max_size=4))
-    scope = draw(st.permutations(scope))
-    rng = np.random.default_rng(draw(st.integers(0, 2**32 - 1)))
-    values = rng.random(tuple(v.cardinality for v in scope))
-    if draw(st.booleans()):
-        values[rng.random(values.shape) < 0.3] = 0.0  # include exact zeros
-    return DiscreteFactor(scope, values)
-
-
-@st.composite
-def evidence_for(draw, pool=tuple(POOL)):
-    chosen = draw(st.lists(st.sampled_from(pool), unique_by=lambda v: v.name, max_size=3))
-    return {v.name: draw(st.sampled_from(v.states)) for v in chosen}
-
 
 SETTINGS = settings(max_examples=150, deadline=None)
 

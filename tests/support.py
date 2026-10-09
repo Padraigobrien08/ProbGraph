@@ -11,6 +11,7 @@ import itertools
 from collections.abc import Callable, Iterable, Mapping, Sequence
 
 import numpy as np
+from hypothesis import strategies as st
 
 from probgraph import BayesianNetwork, DiscreteFactor, DiscreteVariable, TabularCPD
 
@@ -234,3 +235,33 @@ def conditionally_independent(
         return table.sum(axis=drop, keepdims=True)
 
     return bool(np.allclose(m(x + y + z) * m(z), m(x + z) * m(y + z), atol=atol, rtol=0.0))
+
+
+# ---------------------------------------------------------------------------
+# Hypothesis strategies for random factors (shared by the factor test modules)
+# ---------------------------------------------------------------------------
+
+POOL = [
+    DiscreteVariable("V0", ("s0", "s1")),
+    DiscreteVariable("V1", ("s0", "s1", "s2")),
+    DiscreteVariable("V2", ("s0",)),
+    DiscreteVariable("V3", ("s0", "s1")),
+    DiscreteVariable("V4", ("s0", "s1", "s2")),
+]
+
+
+@st.composite
+def factors(draw, pool=tuple(POOL)):
+    scope = draw(st.lists(st.sampled_from(pool), unique_by=lambda v: v.name, max_size=4))
+    scope = draw(st.permutations(scope))
+    rng = np.random.default_rng(draw(st.integers(0, 2**32 - 1)))
+    values = rng.random(tuple(v.cardinality for v in scope))
+    if draw(st.booleans()):
+        values[rng.random(values.shape) < 0.3] = 0.0  # include exact zeros
+    return DiscreteFactor(scope, values)
+
+
+@st.composite
+def evidence_for(draw, pool=tuple(POOL)):
+    chosen = draw(st.lists(st.sampled_from(pool), unique_by=lambda v: v.name, max_size=3))
+    return {v.name: draw(st.sampled_from(v.states)) for v in chosen}
