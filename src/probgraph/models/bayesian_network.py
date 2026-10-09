@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from types import MappingProxyType
 
+from probgraph._assignments import check_partial_assignment
 from probgraph.distributions import TabularCPD
 from probgraph.exceptions import UnknownNodeError, ValidationError
 from probgraph.factors import DiscreteFactor
@@ -156,14 +157,7 @@ class BayesianNetwork:
         ``joint_probability``, the assignment does not need to cover every
         variable.
         """
-        if not isinstance(evidence, Mapping):
-            raise ValidationError(f"Evidence must be a mapping, got {evidence!r}.")
-        unknown = [name for name in evidence if name not in self._variables]
-        if unknown:
-            raise UnknownNodeError(f"Evidence names unknown variables {unknown}.")
-        for name, state in evidence.items():
-            self._variables[name].index_of(state)
-        return dict(evidence)
+        return check_partial_assignment(self._variables, evidence)
 
     def sample(self, n: int, seed: int | None = None) -> list[dict[str, str]]:
         """Draw ``n`` i.i.d. joint samples by ancestral sampling.

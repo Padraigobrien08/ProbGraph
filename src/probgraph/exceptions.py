@@ -27,3 +27,7 @@ class UnknownStateError(ProbGraphError, LookupError):
 
 class NormalisationError(ProbGraphError, ArithmeticError):
     """A factor with total mass 0 cannot be normalised."""
+
+
+class ZeroProbabilityEvidenceError(NormalisationError):
+    """The evidence has probability 0, so the posterior is undefined."""

@@ -15,6 +15,7 @@ def test_public_api():
         "DiscreteFactor",
         "DiscreteVariable",
         "TabularCPD",
+        "VariableElimination",
     }
     for name in probgraph.__all__:
         assert getattr(probgraph, name).__module__.startswith("probgraph.")
