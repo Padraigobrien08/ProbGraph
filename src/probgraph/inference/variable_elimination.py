@@ -1,6 +1,7 @@
-"""Exact inference by sum-product variable elimination.
+"""Exact inference by variable elimination: sum-product, and max-product for the MPE.
 
-The correctness proof (P6) is in ``docs/mathematics/variable_elimination.md``.
+The correctness proofs are in ``docs/mathematics/variable_elimination.md`` (P6) and
+``docs/mathematics/max_product.md`` (P20).
 """
 
 from __future__ import annotations
@@ -10,6 +11,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from functools import reduce
 from operator import mul
 from typing import TYPE_CHECKING, Literal, TypeVar
+
+import numpy as np
 
 from probgraph._assignments import check_partial_assignment, check_query_and_evidence
 from probgraph.exceptions import (
@@ -30,6 +33,7 @@ from probgraph.inference.elimination_order import (
 
 if TYPE_CHECKING:
     from probgraph.models import BayesianNetwork
+    from probgraph.variables import DiscreteVariable
 
 Space = Literal["probability", "log"]
 SPACES: tuple[Space, ...] = ("probability", "log")
@@ -155,6 +159,47 @@ class VariableElimination:
         order, kept, used = self._plan([], observed, elimination_order, prune_barren, False)
         log_factors = self._select(self._log_factors, kept, used)
         return _eliminate(log_factors, order, LogFactor.unit()).log_total()
+
+    def most_probable_explanation(
+        self,
+        evidence: Mapping[str, str] | None = None,
+        elimination_order: Sequence[str] | Heuristic = "min_fill",
+    ) -> tuple[dict[str, str], float]:
+        """Return ``(x*, log P(x*, e))``, where x* maximises P(x, e) over every unobserved variable.
+
+        Max-product (max-sum, in log space) variable elimination followed by a
+        traceback (max_product.md §3–4). Every elimination order gives the same
+        value. Among several maximisers, each traceback step takes the first state
+        that attains the maximum. Barren variables are never pruned: unlike a sum,
+        max_x P(x | u) depends on u (max_product.md §5). Raises
+        ``ZeroProbabilityEvidenceError`` when P(e) = 0.
+        """
+        observed = check_partial_assignment(self._variables, evidence or {})
+        order, kept, used = self._plan([], observed, elimination_order, False, False)
+        remaining = self._select(self._log_factors, kept, used)
+        records: list[tuple[str, tuple[DiscreteVariable, ...], np.ndarray]] = []
+        for z in order:
+            involved = [phi for phi in remaining if z in phi.scope]
+            remaining = [phi for phi in remaining if z not in phi.scope]
+            psi = _product(involved, LogFactor.unit())
+            axis = psi.names.index(z)
+            rest = tuple(v for v in psi.variables if v.name != z)
+            records.append((z, rest, np.argmax(psi.log_values, axis=axis)))  # first maximiser
+            remaining.append(LogFactor._trusted(rest, np.max(psi.log_values, axis=axis)))
+        log_max = _product(remaining, LogFactor.unit()).log_total()
+        if log_max == -math.inf:
+            raise ZeroProbabilityEvidenceError(
+                f"P(e) = 0 for evidence {observed}; every assignment is impossible."
+            )
+        chosen: dict[str, int] = {}
+        for z, rest, best in reversed(records):  # Proposition 1: later choices come first
+            chosen[z] = int(best[tuple(chosen[v.name] for v in rest)])
+        assignment = {
+            name: self._variables[name].states[chosen[name]]
+            for name in self._variables
+            if name in chosen
+        }
+        return assignment, log_max
 
     # -- inspection ---------------------------------------------------------
 
