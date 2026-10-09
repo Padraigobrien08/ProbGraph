@@ -1,6 +1,6 @@
 """Dirichlet priors and Bayesian parameter estimation for Bayesian networks.
 
-The derivations (P15, Part 1) are in ``docs/mathematics/dirichlet.md``.
+The derivations (P15, Parts 1 and 2) are in ``docs/mathematics/dirichlet.md``.
 """
 
 from __future__ import annotations
@@ -130,6 +130,39 @@ def bayesian_estimate(
             "use point='mean' or a prior with α > 1."
         )
     return model
+
+
+def log_marginal_likelihood(
+    structure: BayesianNetwork, data: Dataset, prior: DirichletPrior
+) -> float:
+    """log P(D | G), the Bayesian score of ``structure``'s graph (Theorem 2, B4).
+
+    The parameters are integrated out against ``prior``, giving one ratio of
+    Dirichlet normalising constants per CPD column:
+    Σ_{i,u} [log Γ(α·|u) - log Γ(α·|u + N(u)) + Σ_x (log Γ(α_x|u + N(x,u)) - log Γ(α_x|u))].
+    ``D`` is the ordered sequence of rows. Any CPDs on ``structure`` are ignored,
+    and the data must be complete.
+    """
+    _check_variables(structure.variables, data)
+    if not data.is_complete:
+        raise ValidationError(
+            f"log_marginal_likelihood needs complete data, but {data.missing_count} values are "
+            "missing."
+        )
+    total = 0.0
+    for variable in structure.variables:
+        parents = _parents_in_order(structure, variable.name)
+        counts = data.counts([variable.name, *(p.name for p in parents)]).values
+        alpha = prior.pseudocounts(variable, parents)
+        alpha_total = alpha.sum(axis=0)
+        total += float(
+            (_lgamma(alpha_total) - _lgamma(alpha_total + counts.sum(axis=0))).sum()
+            + (_lgamma(alpha + counts) - _lgamma(alpha)).sum()
+        )
+    return total
+
+
+_lgamma = np.vectorize(math.lgamma, otypes=[np.float64])
 
 
 def _positive(value: float, name: str) -> float:
