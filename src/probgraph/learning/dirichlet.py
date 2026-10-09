@@ -167,13 +167,17 @@ def log_marginal_likelihood(
     for variable in structure.variables:
         parents = _parents_in_order(structure, variable.name)
         counts = family_counts[variable.name]
-        alpha = prior.pseudocounts(variable, parents)
-        alpha_total = alpha.sum(axis=0)
-        total += float(
-            (_lgamma(alpha_total) - _lgamma(alpha_total + counts.sum(axis=0))).sum()
-            + (_lgamma(alpha + counts) - _lgamma(alpha)).sum()
-        )
+        total += _family_log_marginal_likelihood(prior.pseudocounts(variable, parents), counts)
     return total
+
+
+def _family_log_marginal_likelihood(alpha: np.ndarray, counts: np.ndarray) -> float:
+    """Σ_u log [B(α·|u + N(·, u)) / B(α·|u)]: one family's term of Theorem 2."""
+    alpha_total = alpha.sum(axis=0)
+    return float(
+        (_lgamma(alpha_total) - _lgamma(alpha_total + counts.sum(axis=0))).sum()
+        + (_lgamma(alpha + counts) - _lgamma(alpha)).sum()
+    )
 
 
 _lgamma = np.vectorize(math.lgamma, otypes=[np.float64])

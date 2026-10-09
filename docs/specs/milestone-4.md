@@ -1,10 +1,12 @@
-# ProbGraph — Milestone 4 Technical Specification (v1.1)
+# ProbGraph — Milestone 4 Technical Specification (v1.2)
 
 **Milestone:** Learning from data: maximum likelihood, Bayesian estimation, and EM for missing data.
 **Release target:** `v0.4.0`.
 **Status:** Accepted 2026-10-09. All §9 decisions are confirmed with their proposed defaults.
 **v1.1 (M4.6):** EM's interface gains `point`, `step`, `initial_model`, `expected_counts` and
 `EMResult.log_objective`; M2 and ⚑6 are corrected for the posterior-mean M-step (em.md §7).
+**v1.2 (M4.8):** `bic` takes a structure and fits the MLE itself; `family_scores` is added; S4's
+"equal parameter counts" always holds for equivalent structures (model_selection.md §4).
 **Primary objective:** Learn the parameters of a Bayesian network from data, whether complete or
 with missing values. Prove each estimator correct, and check it against independent oracles
 (exact arithmetic, brute-force enumeration, and data sampled from a known network) so that
@@ -183,8 +185,11 @@ the right call. Rows with identical observed values share one calibration.
 ### 3.5 *(optional)* Model selection
 
 ```python
-def bic(model: BayesianNetwork, data: Dataset) -> float: ...   # log L(θ̂) - (d/2) log N, with d = n_free_parameters
-def score_structures(candidates, data, score: Literal["bic", "bdeu"], ...) -> list[tuple[float, BayesianNetwork]]: ...
+def bic(structure: BayesianNetwork, data: Dataset) -> float: ...   # log L(θ̂) - (d/2) log N, θ̂ fitted here
+def family_scores(structure, data, score: Literal["bic", "bdeu"] = "bic",
+                  equivalent_sample_size: float = 1.0) -> dict[str, float]: ...   # per-family terms
+def score_structures(candidates, data, score: Literal["bic", "bdeu"] = "bic",
+                     equivalent_sample_size: float = 1.0) -> list[tuple[float, BayesianNetwork]]: ...  # best first
 ```
 
 | ID | Statement |
@@ -192,7 +197,7 @@ def score_structures(candidates, data, score: Literal["bic", "bdeu"], ...) -> li
 | S1 | $\mathrm{BIC}=\log L(\hat\theta)-\frac d2\log N$, with $d$ from M1's P4. |
 | S2 | **Decomposability:** both scores are sums of per-family terms. Changing one edge changes only the terms of the affected child. |
 | S3 | For large $N$ sampled from a known network, the true structure (or a Markov-equivalent one) scores best among a candidate set that includes supersets and subsets. |
-| S4 | BDeu is score-equivalent (B5). BIC is too, for Markov-equivalent structures with equal parameter counts. |
+| S4 | BDeu is score-equivalent (B5). BIC is too: Markov-equivalent structures always have equal parameter counts and equal maximised likelihoods. |
 
 ---
 
