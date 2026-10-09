@@ -2,5 +2,6 @@
 
 from probgraph.temporal.forward_backward import ForwardBackward
 from probgraph.temporal.hmm import HiddenMarkovModel
+from probgraph.temporal.viterbi import posterior_decode, viterbi
 
-__all__ = ["ForwardBackward", "HiddenMarkovModel"]
+__all__ = ["ForwardBackward", "HiddenMarkovModel", "posterior_decode", "viterbi"]

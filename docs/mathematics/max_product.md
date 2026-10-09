@@ -122,3 +122,66 @@ path of probability zero.
 - **Ties:** in a model where every assignment is equally likely, the answer is all first states.
 - **Underflow:** with 1,100 observations ($P(x,e)$ far below float64's range), the value matches
   $\max_c\big(\log P(e)+\log P(c\mid e)\big)$ from log-space VE.
+
+---
+
+# Part 2 — Viterbi and posterior decoding
+
+## 8. Viterbi is max-product elimination along the chain
+
+For an HMM with observations $y_{1:T}$, the MPE over the hidden states is the most probable
+**path**:
+$$x^*_{1:T}\in\arg\max_{x_{1:T}}P(x_{1:T},y_{1:T})=\arg\max\;\pi_{x_1}e_1(x_1)\prod_{t\ge2}A_{x_{t-1}x_t}e_t(x_t),$$
+with $e_t$ the evidence vectors of P19 §1 (a factor of 1 when $y_t$ is missing). Eliminate
+$X_1,X_2,\ldots,X_{T-1}$ in order with max-sum. The message after eliminating $X_{t-1}$ is
+$$\delta_t(j)=\log e_t(j)+\max_i\big(\delta_{t-1}(i)+\log A_{ij}\big),\qquad\delta_1=\log\pi+\log e_1,$$
+which is the log-probability of the best path ending in state $j$ at time $t$, together with
+$y_{1:t}$. The traceback table of §4 is the **back-pointer** $\delta$-argmax
+$\mathrm{bp}_t(j)=$ the first $i$ attaining that maximum. Then $\log P(x^*,y)=\max_j\delta_T(j)$,
+$x^*_T$ is the first maximising $j$, and $x^*_{t-1}=\mathrm{bp}_t(x^*_t)$.
+
+This is the forward recursion of P19 with the sum replaced by a max. It is correct by Part 1
+(Proposition 1, with this elimination order), and it costs $O(TK^2)$. Being in log space, it never
+underflows. $\max_j\delta_T(j)=-\infty$ exactly when the sequence is impossible.
+
+## 9. Two different questions
+
+There are two natural ways to "decode" the hidden states.
+
+- **Viterbi** returns the single path with the highest posterior probability. It answers: *which
+  whole sequence of states is most likely?*
+- **Posterior decoding** returns, for each $t$ separately, $\hat x_t=\arg\max_iP(X_t=i\mid y_{1:T})$,
+  the argmax of the smoothed belief. It answers: *what is the most likely state at each time?*
+
+**Proposition 2.** Posterior decoding maximises the expected number of correctly decoded steps,
+$\mathbb E\big[\#\{t:X_t=\hat x_t\}\mid y\big]$. Viterbi maximises the probability that every step is
+correct, $P(X_{1:T}=\hat x_{1:T}\mid y)$.
+
+*Proof.* By linearity of expectation, $\mathbb E[\#\{t:X_t=\hat x_t\}\mid y]=\sum_tP(X_t=\hat x_t\mid y)$.
+Each term depends on $\hat x_t$ alone, so the sum is maximised by maximising each term separately.
+The second claim is the definition of the MPE. $\square$
+
+The two can disagree completely. Posterior decoding can even return a path that the model rules
+out.
+
+**Fixture F2.** Three states with $\pi=(2/5,3/10,3/10)$. State 0 always moves to 1, and states 1 and 2
+always move to 2. Emissions carry no information. For $T=2$ the paths with positive probability
+are $(0,1)$ with $2/5$, $(1,2)$ with $3/10$ and $(2,2)$ with $3/10$. The marginals are
+$P(X_1)=(2/5,3/10,3/10)$ and $P(X_2)=(0,2/5,3/5)$, so posterior decoding gives $(0,2)$, a path of
+probability **zero**, since $A_{02}=0$. Viterbi gives $(0,1)$. Posterior decoding is still
+right in its own sense: its expected number of correct steps is $2/5+3/5=1$, against
+$2/5+2/5=4/5$ for Viterbi's path.
+
+## 10. How the tests check Part 2
+
+- **F1:** Viterbi on $(u,u,\neg u,u,u)$ is (rain, rain, dry, rain, rain), with
+  $P(\text{path},y)=2893401/250000000$ and $P(\text{path}\mid y)\approx0.337386$.
+- **F2** exactly, including the expected-correct counts 1 and 4/5.
+- **Brute force over all $K^T$ paths** on random models with missing observations, and agreement with
+  `most_probable_explanation` on the unrolled network when every $Y_t$ is observed. With a missing
+  $Y_t$ they differ, and must: the MPE maximises over $Y_t$ (a factor $\max_yB_{x,y}<1$) where
+  Viterbi sums it out (a factor 1). This is §5's barren-leaf lesson once more.
+- **Proposition 2** by enumeration: no path has a higher expected number of correct steps than
+  posterior decoding, and none has a higher probability than Viterbi's.
+- **5,000 steps:** for umbrellas every day the path is all rain, with
+  $\log P=\log\frac12+\log0.9+4999\log0.63$, far below float64's range.
