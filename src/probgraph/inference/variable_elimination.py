@@ -18,6 +18,14 @@ from probgraph.exceptions import (
     ZeroProbabilityEvidenceError,
 )
 from probgraph.factors import DiscreteFactor
+from probgraph.graphs import UndirectedGraph, interaction_graph
+from probgraph.inference.elimination_order import (
+    HEURISTICS,
+    EliminationStep,
+    EliminationTrace,
+    Heuristic,
+    greedy_order,
+)
 
 if TYPE_CHECKING:
     from probgraph.models import BayesianNetwork
@@ -30,9 +38,10 @@ class VariableElimination:
     created. Later ``add_cpd`` calls on the model do not affect an existing
     engine. This matches ``AncestralSampler``.
 
-    ``elimination_order`` must list exactly the variables outside the query and
-    the evidence, each once. If it is omitted, they are eliminated in reverse
-    topological order (leaves first), which removes barren leaves cheaply (P6 §5).
+    ``elimination_order`` is either a heuristic name from ``HEURISTICS`` (the
+    default is ``"min_fill"``), or an explicit list of exactly the variables
+    outside the query and evidence, each once. The order changes the cost
+    (``elimination_cost``) but never the answer.
 
     Invariants:
         V1  results equal brute-force enumeration
@@ -48,13 +57,13 @@ class VariableElimination:
     def __init__(self, model: BayesianNetwork) -> None:
         self._factors = model.factors()  # validates the model
         self._variables = {v.name: v for v in model.variables}
-        self._leaves_first = tuple(reversed([phi.names[0] for phi in self._factors]))
+        self._cardinalities = {v.name: v.cardinality for v in model.variables}
 
     def query(
         self,
         variables: Sequence[str],
         evidence: Mapping[str, str] | None = None,
-        elimination_order: Sequence[str] | None = None,
+        elimination_order: Sequence[str] | Heuristic = "min_fill",
     ) -> DiscreteFactor:
         """Return P(variables | evidence) as a normalised factor over ``variables``."""
         query = self._check_query(variables)
@@ -63,7 +72,7 @@ class VariableElimination:
         if both:
             raise ValidationError(f"Variables {both} are both queried and observed.")
 
-        order = self._check_order(elimination_order, exclude=[*query, *observed])
+        order = self._resolve_order(elimination_order, query, observed)
         joint = self._eliminate(observed, order)  # P(Q, e), with scope exactly Q
         try:
             return joint.normalise().aligned(query)
@@ -75,27 +84,101 @@ class VariableElimination:
     def probability_of_evidence(
         self,
         evidence: Mapping[str, str],
-        elimination_order: Sequence[str] | None = None,
+        elimination_order: Sequence[str] | Heuristic = "min_fill",
     ) -> float:
         """Return P(e), eliminating every unobserved variable.
 
         Impossible evidence returns 0.0. Unlike ``query``, this does not raise.
         """
         observed = check_partial_assignment(self._variables, evidence)
-        order = self._check_order(elimination_order, exclude=observed)
+        order = self._resolve_order(elimination_order, [], observed)
         return self._eliminate(observed, order).total()
+
+    def elimination_order(
+        self,
+        variables: Sequence[str],
+        evidence: Mapping[str, str] | None = None,
+        heuristic: Heuristic = "min_fill",
+    ) -> list[str]:
+        """The order ``heuristic`` chooses for this query. Ties go to model declaration order."""
+        query = self._check_query(variables)
+        observed = check_partial_assignment(self._variables, evidence or {})
+        return self._greedy(heuristic, query, observed)
+
+    def elimination_cost(
+        self, order: Sequence[str], evidence: Mapping[str, str] | None = None
+    ) -> EliminationTrace:
+        """Run the elimination of ``order`` and record each intermediate table.
+
+        ``order`` can be any sequence of distinct unobserved variables. Whatever
+        is not eliminated stays in the final factor. The trace is *measured* from
+        the factors themselves; ``simulate_elimination`` predicts it from the
+        graph (invariant V8).
+        """
+        observed = check_partial_assignment(self._variables, evidence or {})
+        if isinstance(order, str):
+            raise ValidationError(
+                f"Elimination order must be a sequence of names, not the string {order!r}."
+            )
+        names = list(order)
+        duplicates = sorted({n for n in names if names.count(n) > 1})
+        if duplicates:
+            raise ValidationError(f"Elimination order has duplicate variables {duplicates}.")
+        unknown = [n for n in names if n not in self._variables]
+        if unknown:
+            raise UnknownNodeError(f"Elimination order names unknown variables {unknown}.")
+        clash = [n for n in names if n in observed]
+        if clash:
+            raise ValidationError(f"Cannot eliminate observed variables {clash}.")
+        steps: list[EliminationStep] = []
+        self._eliminate(observed, names, steps)
+        return EliminationTrace(tuple(steps))
 
     # -- internals ----------------------------------------------------------
 
-    def _eliminate(self, evidence: Mapping[str, str], order: Sequence[str]) -> DiscreteFactor:
+    def _eliminate(
+        self,
+        evidence: Mapping[str, str],
+        order: Sequence[str],
+        trace: list[EliminationStep] | None = None,
+    ) -> DiscreteFactor:
         """Return Σ_order Π φ_i[e], summing out one variable at a time (P6 §2)."""
         factors = [phi.reduce(evidence) for phi in self._factors]
         for z in order:
             involved = [phi for phi in factors if z in phi.scope]
             # Keep the factors that do not mention z: the lemma moves the sum past them.
             factors = [phi for phi in factors if z not in phi.scope]
-            factors.append(_product(involved).marginalise([z]))
+            psi = _product(involved)
+            if trace is not None:
+                trace.append(EliminationStep(z, psi.scope, psi.values.size))
+            factors.append(psi.marginalise([z]))
         return _product(factors)
+
+    def _resolve_order(
+        self,
+        order: Sequence[str] | Heuristic,
+        query: Sequence[str],
+        observed: Mapping[str, str],
+    ) -> list[str]:
+        if isinstance(order, str):
+            return self._greedy(order, query, observed)  # type: ignore[arg-type]
+        return self._check_order(order, exclude=[*query, *observed])
+
+    def _greedy(
+        self, heuristic: Heuristic, query: Sequence[str], observed: Mapping[str, str]
+    ) -> list[str]:
+        if heuristic not in HEURISTICS:
+            raise ValidationError(
+                f"Unknown elimination heuristic {heuristic!r}; expected one of {HEURISTICS}."
+            )
+        graph = self._interaction_graph(observed)
+        eliminate = [n for n in graph.nodes() if n not in query]
+        return greedy_order(graph, eliminate, heuristic, self._cardinalities)
+
+    def _interaction_graph(self, observed: Mapping[str, str]) -> UndirectedGraph:
+        """H(Φ[e]), with nodes in model declaration order so that ties break predictably."""
+        graph = interaction_graph(phi.reduce(observed) for phi in self._factors)
+        return UndirectedGraph([n for n in self._variables if n in graph], graph.edges())
 
     def _check_query(self, variables: Sequence[str]) -> list[str]:
         if isinstance(variables, str):
@@ -113,15 +196,9 @@ class VariableElimination:
             raise UnknownNodeError(f"Query names unknown variables {unknown}.")
         return query
 
-    def _check_order(self, order: Sequence[str] | None, exclude: Iterable[str]) -> list[str]:
+    def _check_order(self, order: Sequence[str], exclude: Iterable[str]) -> list[str]:
         excluded = set(exclude)
-        expected = [n for n in self._leaves_first if n not in excluded]
-        if order is None:
-            return expected
-        if isinstance(order, str):
-            raise ValidationError(
-                f"Elimination order must be a sequence of names, not the string {order!r}."
-            )
+        expected = [n for n in self._variables if n not in excluded]
         given = list(order)
         duplicates = sorted({n for n in given if given.count(n) > 1})
         if duplicates:

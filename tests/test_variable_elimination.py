@@ -25,6 +25,7 @@ from probgraph.exceptions import (
     ValidationError,
     ZeroProbabilityEvidenceError,
 )
+from probgraph.inference import HEURISTICS
 
 Y, N = "yes", "no"
 
@@ -121,7 +122,7 @@ def test_invalid_queries_are_rejected(ve, query, evidence, error, match):
         (["Rain", "Traffic", "Umbrella", "Accident"], r"unexpected.*Accident"),  # query variable
         (["Rain", "Traffic", "Umbrella", "Late"], r"unexpected.*Late"),  # evidence variable
         (["Rain", "Traffic", "Umbrella", "Rain"], "duplicate"),
-        ("RTU", "string"),
+        ("RTU", "heuristic"),  # a string is read as a heuristic name
     ],
 )
 def test_invalid_elimination_orders_are_rejected(ve, order, match):
@@ -225,10 +226,10 @@ def test_matches_enumeration_on_random_problems(seed):
 
     ve = VariableElimination(model)
     p_e = evidence_probability(model, evidence)
-    orders = [None] + [list(rng.permutation(eliminable)) for _ in range(3)]
+    orders = [*HEURISTICS, *(list(rng.permutation(eliminable)) for _ in range(3))]
     for order in orders:
         # P(e) also eliminates the query variables.
-        evidence_order = None if order is None else [*order, *query]
+        evidence_order = order if isinstance(order, str) else [*order, *query]
         assert ve.probability_of_evidence(evidence, evidence_order) == pytest.approx(p_e, abs=1e-12)
         if p_e == 0.0:
             with pytest.raises(ZeroProbabilityEvidenceError):

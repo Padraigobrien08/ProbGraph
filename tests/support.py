@@ -91,12 +91,17 @@ def late_network() -> BayesianNetwork:
 
 
 def random_network(
-    seed: int, n_vars: tuple[int, int] = (1, 5), cards: tuple[int, int] = (1, 3)
+    seed: int,
+    n_vars: tuple[int, int] = (1, 5),
+    cards: tuple[int, int] = (1, 3),
+    edge_prob: float = 0.5,
 ) -> BayesianNetwork:
     """A random DAG with random cardinalities and Dirichlet(1) CPDs.
 
     ``n_vars`` and ``cards`` are inclusive ranges. Parent axes are shuffled, so a
     CPD's axis order differs from the order in which the graph lists the parents.
+    Changing ``edge_prob`` does not change the random stream, so a given seed
+    keeps the same draws.
     """
     rng = np.random.default_rng(seed)
     n = int(rng.integers(n_vars[0], n_vars[1] + 1))
@@ -111,7 +116,7 @@ def random_network(
         (f"V{hidden[i]}", f"V{hidden[j]}")
         for i in range(n)
         for j in range(i + 1, n)
-        if rng.random() < 0.5
+        if rng.random() < edge_prob
     ]
     model = BayesianNetwork(variables, edges)
     by_name = {v.name: v for v in variables}
