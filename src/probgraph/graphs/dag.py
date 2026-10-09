@@ -121,6 +121,24 @@ class DAG:
         self._require(node)
         return self._reachable(node, self._children)
 
+    def ancestral_set(self, nodes: Iterable[str]) -> set[str]:
+        """An*(nodes): the nodes themselves together with all of their ancestors.
+
+        The result is closed under taking parents. See variable_elimination.md §5.
+        """
+        if isinstance(nodes, str):
+            raise ValidationError(f"Expected a collection of node names, not the string {nodes!r}.")
+        result: set[str] = set()
+        stack = list(nodes)
+        for node in stack:
+            self._require(node)
+        while stack:
+            node = stack.pop()
+            if node not in result:
+                result.add(node)
+                stack.extend(self._parents[node] - result)
+        return result
+
     def topological_sort(self) -> list[str]:
         """Return a topological ordering, computed with Kahn's algorithm.
 

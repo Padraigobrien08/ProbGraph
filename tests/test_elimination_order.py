@@ -328,9 +328,12 @@ def test_heuristic_orders_are_valid_and_exact(seed):
     eliminable = sorted(n for n in names if n not in query and n not in evidence)
     ve = VariableElimination(model)
     expected = posterior(model, query, evidence)
+    barren = ve.barren_variables(query, evidence)
     for heuristic in HEURISTICS:
-        order = ve.elimination_order(query, evidence, heuristic)
-        assert sorted(order) == eliminable
+        full = ve.elimination_order(query, evidence, heuristic, prune_barren=False)
+        pruned = ve.elimination_order(query, evidence, heuristic)
+        assert sorted(full) == eliminable
+        assert sorted(pruned) == sorted(set(eliminable) - barren)
         assert ve.query(query, evidence, elimination_order=heuristic).allclose(expected, atol=1e-12)
 
 
@@ -366,7 +369,7 @@ def test_order_changes_cost_but_not_the_answer():
     n = 10
     model = naive_bayes(n)
     ve = VariableElimination(model)
-    good = ve.elimination_order(["F1"])  # min_fill
+    good = ve.elimination_order(["F1"], prune_barren=False)  # min_fill on the full graph
     bad = ["C", *(f"F{i}" for i in range(2, n + 1))]
 
     assert good[-1] == "C"  # every other feature is a fill-free leaf
@@ -392,8 +395,11 @@ def test_order_changes_cost_but_not_the_answer():
 def test_default_order_is_min_fill():
     ve = VariableElimination(naive_bayes(6))
     assert ve.elimination_order(["F1"]) == ve.elimination_order(["F1"], heuristic="min_fill")
-    trace = ve.elimination_cost(ve.elimination_order(["F1"]))
-    assert trace.width == 1
+    full = ve.elimination_order(["F1"], prune_barren=False)
+    assert ve.elimination_cost(full).width == 1
+    # With pruning (the default), F2..F6 are barren and only C is left to eliminate.
+    assert ve.elimination_order(["F1"]) == ["C"]
+    assert ve.query_trace(["F1"]).total_cost == 4
 
 
 def test_unknown_heuristic_in_query_is_rejected():

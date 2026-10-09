@@ -94,17 +94,57 @@ exponential, from the same algorithm. Choosing good orders is task M2.5 (heurist
 width). Finding the *optimal* order is NP-hard in general (Arnborg, Corneil & Proskurowski, 1987),
 so heuristics are the practical answer.
 
-## 5. Barren nodes
+## 5. Barren nodes and ancestral pruning
 
 Let $z$ be a leaf outside $Q\cup E$. Its only factor is its own CPD, because a leaf is nobody's
 parent. So $\Phi_z=\{\phi_z\}$, and by F10
 $$\tau_z=\sum_z\phi_z=\mathbb 1_{\mathrm{pa}(z)}.$$
-Multiplying by an all-ones factor changes nothing, so the leaf can be **deleted** before inference
-without changing any answer. Repeating this deletes every barren node. This is P2's corollary C-a,
-restated as an operation on factors, and it is task M2.6 (V7).
+Multiplying by an all-ones factor changes nothing, so such a **barren** leaf can be deleted
+before inference. Deleting it can make its parents barren leaves in turn. The following
+proposition says exactly where repeated deletion stops.
 
-It also explains the default order used until the heuristics arrive: **reverse topological
-order**. That eliminates leaves first, so every barren leaf is removed at a cost of $|\mathcal X_{\{z\}\cup\mathrm{pa}(z)}|$.
+Write $\mathrm{An}^*(S)=S\cup\bigcup_{s\in S}\mathrm{anc}(s)$ for the **ancestral closure** of $S$
+(`DAG.ancestral_set`).
+
+**Proposition 5 (what pruning removes).** Repeatedly deleting leaves outside $Q\cup E$
+removes **exactly** $V\setminus\mathrm{An}^*(Q\cup E)$.
+
+*Proof.* Let $K=\mathrm{An}^*(Q\cup E)$ and $D=V\setminus K$.
+
+- *Nothing in $K$ is ever removed.* A vertex of $Q\cup E$ is never eligible for removal. Any
+  other $v\in K$ has a directed path to some $q\in Q\cup E$. Every vertex on that path is in $K$.
+  By induction on the number of deletions, the path survives, so $v$ always has a child and is
+  never a leaf.
+- *Everything in $D$ is removed.* $D$ is closed under taking children: if $v\in D$ had a child in
+  $K$, then $v$ would be an ancestor of $Q\cup E$, so $v\in K$. While $D$ still has remaining
+  vertices, the remaining part of $D$ is a non-empty DAG, so it has a sink $v$. All of $v$'s
+  children lie in $D$, and none remain, so $v$ is a leaf. It is outside $Q\cup E\subseteq K$, so
+  it is barren and gets deleted. $\square$
+
+**Corollary (V7).** $P(Q,e)$, and hence $P(Q\mid e)$ and $P(e)$, can be computed from the
+CPDs of $K$ alone:
+$$P(Q,e)=\sum_{K\setminus(Q\cup E)}\ \prod_{i\in K}\phi_i[e].$$
+This is P2's corollary C-a for the ancestral set $K$, followed by summing out its non-query,
+non-evidence variables. All parents of a vertex in $K$ are themselves in $K$, so every
+factor kept is complete.
+
+**Pruning never makes a fixed order more expensive.** Let $H$ be the interaction graph before
+pruning and $H'$ the one after. $H'$ is a subgraph of $H$: it has fewer vertices, and it may
+also lack marriages whose only shared child was pruned. Eliminate both with the same order,
+skipping pruned vertices in $H'$. Then **every step's scope in $H'$ is a subset of the same
+variable's scope in $H$**.
+
+*Proof.* The **fill-path lemma** (Rose, Tarjan & Lueker, 1976) says that $u$ and $v$ are
+adjacent when the first of them is eliminated exactly when $H$ contains a $u$–$v$ path whose
+interior vertices are all eliminated before both $u$ and $v$. Any such path in $H'$ is also a
+path in $H$, and its vertices are eliminated in the same relative order. $\square$
+
+The tests check this subset relation on measured traces.
+
+With heuristic orders, pruning changes the graph, so the chosen order can change too. The
+answer is the same either way (V2). For example, in naive Bayes with query $F_1$, every
+$F_{i\ge2}$ is pruned. What is left is the two factors $P(C)$ and $P(F_1\mid C)$, with one
+elimination step of 4 cells, compared with 40 cells in total for min-fill without pruning.
 
 ## 6. What this does not cover
 
@@ -112,4 +152,7 @@ order**. That eliminates leaves first, so every barren leaf is removed at a cost
   (M3) cache the intermediate messages.
 - **Precision.** All computation is in probability space. Products of many small numbers can
   underflow, which would show up as $P(e)=0$. Log-space factors are deferred (spec §9 ⚑7).
-- **Optimal orders.** NP-hard to find, as noted in §4; heuristics come in M2.5.
+- **Optimal orders.** NP-hard to find, as noted in §4. Greedy heuristics (M2.5,
+  [`elimination_orders.md`](elimination_orders.md)) are used instead.
+- **Irrelevant evidence.** Observed variables that are d-separated from the query can be
+  dropped as well. That requires d-separation, so it comes in M2.9.
