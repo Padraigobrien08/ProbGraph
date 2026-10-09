@@ -14,6 +14,7 @@ import numpy as np
 from hypothesis import strategies as st
 
 from probgraph import BayesianNetwork, DiscreteFactor, DiscreteVariable, TabularCPD
+from probgraph.learning import Dataset
 
 # ---------------------------------------------------------------------------
 # Canonical Rain / Accident / Traffic network (spec §4)
@@ -325,3 +326,30 @@ def gibbs_table(variables: Sequence[DiscreteVariable], factors: Iterable) -> np.
             product *= phi.value({n: x[n] for n in phi.names})
         table[index] = product
     return table
+
+
+# ---------------------------------------------------------------------------
+# Learning (M4)
+# ---------------------------------------------------------------------------
+
+
+def brute_force_expected_counts(model: BayesianNetwork, data: Dataset) -> dict[str, np.ndarray]:
+    """Σ_m P(completion | o_m), accumulated as a joint table, then marginalised per family."""
+    table = joint_table(model)
+    position = {v.name: i for i, v in enumerate(model.variables)}
+    column = [data.names.index(v.name) for v in model.variables]
+    total = np.zeros(table.shape)
+    for codes in data.codes:
+        index = tuple(slice(None) if codes[c] < 0 else int(codes[c]) for c in column)
+        completions = np.zeros(table.shape)
+        completions[index] = table[index] / table[index].sum()
+        total += completions
+    result = {}
+    for v in model.variables:
+        parents = [p.name for p in model.variables if p.name in model.parents(v.name)]
+        family = [v.name, *parents]
+        keep = sorted(position[f] for f in family)
+        margin = total.sum(axis=tuple(i for i in range(total.ndim) if i not in keep))
+        in_order = [n for n in position if n in family]
+        result[v.name] = np.transpose(margin, [in_order.index(f) for f in family])
+    return result

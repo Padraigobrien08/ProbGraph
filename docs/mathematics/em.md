@@ -124,10 +124,21 @@ observed. Suppose that at $\theta^{(t)}$, $P(F_j\mid C{=}c)$ is the same for eve
 **Theorem 2.** Then $\theta^{(t+1)}$ has the same property, with the same class prior.
 
 *Proof.* With equal conditionals, $P(o_m\mid C{=}c)$ is the same for every $c$, so the E-step
-posterior $P(C\mid o_m)$ equals the prior $\pi=P(C)$ for every row. The expected counts are then
-$\bar N(c)=\pi_c\,N$ and $\bar N(f,c)=\pi_c\,N_j(f)$, where $N_j(f)$ counts the rows with
-$F_j=f$ observed. The M-step gives $P(C{=}c)=\pi_c$ and
-$P(F_j{=}f\mid C{=}c)=\pi_cN_j(f)/(\pi_cN_j)=N_j(f)/N_j$, which is the same for every $c$. $\square$
+posterior $P(C\mid o_m)$ equals the prior $\pi=P(C)$ for every row. Write $N$ for the number of
+rows, $N_j(f)$ for the rows with $F_j=f$ observed, and $M_j$ for the rows where $F_j$ is missing.
+A row with $F_j=f$ observed adds $\pi_c$ to cell $(f,c)$. A row with $F_j$ missing adds
+$P(F_j{=}f,C{=}c\mid o_m)=\pi_c\,\theta^{(t)}_f$, where $\theta^{(t)}_f$ is the shared conditional.
+So
+$$\bar N(c)=\pi_c\,N,\qquad\bar N(f,c)=\pi_c\big(N_j(f)+M_j\,\theta^{(t)}_f\big).$$
+The M-step gives $P(C{=}c)=\pi_c$ and
+$$P(F_j{=}f\mid C{=}c)=\frac{\pi_c\big(N_j(f)+M_j\theta^{(t)}_f\big)}{\pi_c\,N}=\frac{N_j(f)+M_j\,\theta^{(t)}_f}{N},$$
+which is the same for every $c$. $\square$
+
+Within the symmetric set, the iteration $\theta\mapsto(N_j(f)+M_j\theta)/N$ is a contraction with
+rate $M_j/N$, so it converges geometrically to its fixed point $\theta_f=N_j(f)/N_j$: the observed
+frequencies of $F_j$. When nothing but $C$ is missing, it gets there in one step. At that point
+the model fits the features as if they were independent, with log-likelihood
+$\sum_j\sum_fN_j(f)\log\big(N_j(f)/N_j\big)$.
 
 So EM started symmetrically never separates the classes, whatever the data say. The point is a
 fixed point, hence stationary (§6), but typically a saddle point. Any asymmetric starting point
@@ -143,4 +154,17 @@ on its starting point: EM finds a **local** optimum.
 - **Monotonicity (M2)** on every run in the tests, to within $10^{-10}$, with and without priors.
 - **Complete data (M3):** EM equals `maximum_likelihood` (or `bayesian_estimate`) and stops after
   one iteration.
-- **M4.7:** brute-force EM (M7), the symmetric fixed point (M5, Theorem 2), and MCAR recovery (M6).
+- **Brute-force EM (M7):** an independent EM built from joint tables alone (expected counts by
+  enumerating completions, the M-step by array division) agrees iteration by iteration, with and
+  without priors, for MAP and mean.
+- **The symmetric fixed point (M5):** one step matches Theorem 2's formula exactly; runs from a
+  symmetric start stay symmetric and reach $N_j(f)/N_j$ with the independence log-likelihood; a
+  $10^{-3}$ nudge escapes to a log-likelihood about 200 higher.
+- **Label switching:** random starts reach the same optimum under either labelling of the hidden
+  class, so the parameters are identifiable only up to relabelling.
+- **MCAR recovery (M6):** on 20,000 rows with 30% of values missing, every EM estimate lies within
+  the Bernstein bound for the rows where its family is fully observed, and EM's squared error is
+  under half that of the MLE on complete rows only (17% of the data).
+- **MAR versus MNAR (§2):** hiding Traffic depending on Rain (MAR), EM recovers $P(T)=0.39$ while
+  the average of the observed values is badly biased; hiding it depending on Traffic itself (MNAR),
+  EM is biased too.

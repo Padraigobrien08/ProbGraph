@@ -214,6 +214,20 @@ def test_with_missing_rate_is_within_the_bernstein_bound():
     assert abs(p_hat - 0.25) <= tolerance
 
 
+def test_with_missing_is_independent_of_values_sampled_with_the_same_seed():
+    """Regression: with one shared stream, a cell was hidden exactly when the uniform that
+    produced its value was small, so P(hidden) depended on the value (not MCAR)."""
+    model = late_network()
+    data = Dataset.from_samples(model, AncestralSampler(model, seed=0).sample(20_000))
+    masked = data.with_missing(0.3, seed=0)
+    for column in range(len(data.names)):
+        for value in (0, 1):
+            rows = data.codes[:, column] == value
+            n = int(rows.sum())
+            hidden = float((masked.codes[rows, column] == -1).mean())
+            assert abs(hidden - 0.3) <= 5 * np.sqrt(0.3 * 0.7 / n) + 25 / (3 * n)
+
+
 def test_with_missing_on_selected_variables():
     data = Dataset.from_samples(
         late_network(), AncestralSampler(late_network(), seed=5).sample(200)

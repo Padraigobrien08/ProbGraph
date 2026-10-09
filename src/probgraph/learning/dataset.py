@@ -20,6 +20,9 @@ if TYPE_CHECKING:
 #: The internal code for a missing value.
 MISSING = -1
 
+#: Separates with_missing's random stream from a sampler given the same seed.
+_MCAR_STREAM = 0x4D434152  # "MCAR"
+
 
 class Dataset:
     """An immutable table of observations: one row per case, one column per variable.
@@ -150,7 +153,9 @@ class Dataset:
     ) -> Dataset:
         """Hide each observed cell independently with probability ``fraction`` (MCAR).
 
-        Only the columns named in ``variables`` are affected (default: all).
+        Only the columns named in ``variables`` are affected (default: all). The mask
+        is independent of the data even when ``seed`` is also the seed of the
+        sampler that produced it.
         Missing cells stay missing, and observed values are never changed.
         """
         if not 0.0 <= fraction <= 1.0:
@@ -162,7 +167,10 @@ class Dataset:
             if unknown:
                 raise UnknownNodeError(f"with_missing() names unknown variables {unknown}.")
             columns = [self._column[n] for n in variables]
-        rng = np.random.default_rng(seed)
+        # A stream of its own: with default_rng(seed), the mask would reuse the very
+        # uniforms that AncestralSampler(seed=seed) turned into the values, so hiding
+        # would depend on the values, which is not MCAR.
+        rng = np.random.default_rng(np.random.SeedSequence([seed, _MCAR_STREAM]))
         hide = np.zeros(self._codes.shape, dtype=bool)
         hide[:, columns] = rng.random((self.n_rows, len(columns))) < fraction
         codes = np.where(hide, MISSING, self._codes)

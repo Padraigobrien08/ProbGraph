@@ -5,7 +5,7 @@ from fractions import Fraction
 
 import numpy as np
 import pytest
-from support import joint_table, late_network, random_network
+from support import brute_force_expected_counts, late_network, random_network
 
 from probgraph import AncestralSampler, BayesianNetwork, DiscreteVariable, TabularCPD
 from probgraph.exceptions import ValidationError, ZeroProbabilityEvidenceError
@@ -99,28 +99,6 @@ def test_f3_runs_to_a_fixed_point():
 # ---------------------------------------------------------------------------
 # M1: expected counts equal the brute-force expectation over completions
 # ---------------------------------------------------------------------------
-
-
-def brute_force_expected_counts(model: BayesianNetwork, data: Dataset) -> dict[str, np.ndarray]:
-    """Σ_m P(completion | o_m), accumulated as a joint table, then marginalised per family."""
-    table = joint_table(model)
-    position = {v.name: i for i, v in enumerate(model.variables)}
-    column = [data.names.index(v.name) for v in model.variables]
-    total = np.zeros(table.shape)
-    for codes in data.codes:
-        index = tuple(slice(None) if codes[c] < 0 else int(codes[c]) for c in column)
-        completions = np.zeros(table.shape)
-        completions[index] = table[index] / table[index].sum()
-        total += completions
-    result = {}
-    for v in model.variables:
-        parents = [p.name for p in model.variables if p.name in model.parents(v.name)]
-        family = [v.name, *parents]
-        keep = sorted(position[f] for f in family)
-        margin = total.sum(axis=tuple(i for i in range(total.ndim) if i not in keep))
-        in_order = [n for n in position if n in family]
-        result[v.name] = np.transpose(margin, [in_order.index(f) for f in family])
-    return result
 
 
 @pytest.mark.parametrize("seed", range(30))
@@ -345,10 +323,10 @@ def test_rejects_mismatched_data():
 
 def test_with_a_prior_the_likelihood_itself_may_decrease():
     """Why log_objective exists: mean-EM ascends ℓ + Σ α log θ, not ℓ (em.md §7)."""
-    truth = random_network(200, n_vars=(2, 4), cards=(2, 3), edge_prob=0.6)
-    data = sample(truth, 80, 0).with_missing(0.4, seed=0)
+    truth = random_network(211, n_vars=(2, 4), cards=(2, 3), edge_prob=0.6)
+    data = sample(truth, 80, 11).with_missing(0.4, seed=11)
     result = ExpectationMaximisation(
         truth, data, prior=DirichletPrior.bdeu(4.0), max_iterations=40
-    ).run(seed=0)
-    assert np.diff(result.log_likelihood).min() < -1e-4
+    ).run(seed=11)
+    assert np.diff(result.log_likelihood).min() < -1e-2
     assert_non_decreasing(result.log_objective)
