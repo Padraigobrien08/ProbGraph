@@ -7,6 +7,7 @@ interaction graph. So every cost here is computed on the graph alone.
 
 from __future__ import annotations
 
+import heapq
 import itertools
 import math
 from collections.abc import Iterable, Mapping, Sequence
@@ -73,22 +74,38 @@ def greedy_order(
     Scores are computed in the current graph, including fill edges added by
     earlier steps. Ties go to the vertex inserted earliest into ``graph``.
     ``min_weight`` needs ``cardinalities``.
+
+    Scores are updated after each step rather than recomputed (§3.1 of
+    ``docs/mathematics/elimination_orders.md``), so a vertex's cost per step
+    does not grow with the degree of an untouched hub.
     """
     if heuristic not in HEURISTICS:
         raise ValidationError(
             f"Unknown elimination heuristic {heuristic!r}; expected one of {HEURISTICS}."
         )
-    remaining = _check_names(graph, eliminate, "eliminate")
+    eligible = set(_check_names(graph, eliminate, "eliminate"))
     if heuristic == "min_weight":
         _check_cardinalities(graph, cardinalities)
     rank = {node: i for i, node in enumerate(graph.nodes())}
-    working = graph.copy()
+    adjacent = {node: graph.neighbours(node) for node in graph.nodes()}
+    if heuristic == "min_fill":
+        score = {node: _initial_fill(adjacent, node) for node in adjacent}
+    else:
+        score = {node: _local_score(adjacent[node], heuristic, cardinalities) for node in adjacent}
+    # Lazy deletion (Proposition 6): an entry is current iff its node is still
+    # eligible and its score is the node's score now.
+    heap = [(score[node], rank[node], node) for node in eligible]
+    heapq.heapify(heap)
     order: list[str] = []
-    while remaining:
-        z = min(remaining, key=lambda n: (_score(working, n, heuristic, cardinalities), rank[n]))
+    while heap:
+        s, _, z = heapq.heappop(heap)
+        if z not in eligible or s != score[z]:
+            continue
         order.append(z)
-        remaining.remove(z)
-        _eliminate_vertex(working, z)
+        eligible.remove(z)
+        for node in _eliminate_and_rescore(adjacent, score, z, heuristic, cardinalities):
+            if node in eligible:
+                heapq.heappush(heap, (score[node], rank[node], node))
     return order
 
 
@@ -107,19 +124,56 @@ def simulate_elimination(
     return EliminationTrace(tuple(steps))
 
 
-def _score(
-    graph: UndirectedGraph,
-    node: str,
-    heuristic: Heuristic,
-    cardinalities: Mapping[str, int] | None,
+def _local_score(
+    neighbours: set[str], heuristic: Heuristic, cardinalities: Mapping[str, int] | None
 ) -> int:
-    neighbours = graph.neighbours(node)
+    """The ``min_neighbours`` or ``min_weight`` score, which depends on N(v) alone."""
     if heuristic == "min_neighbours":
         return len(neighbours)
-    if heuristic == "min_weight":
-        assert cardinalities is not None
-        return math.prod(cardinalities[v] for v in neighbours)
-    return sum(1 for u, v in itertools.combinations(neighbours, 2) if not graph.has_edge(u, v))
+    assert cardinalities is not None
+    return math.prod(cardinalities[v] for v in neighbours)
+
+
+def _initial_fill(adjacent: Mapping[str, set[str]], node: str) -> int:
+    """f(v) = C(deg v, 2) - t(v), counting the t(v) edges inside N(v) by intersections (§3.1)."""
+    neighbours = adjacent[node]
+    degree = len(neighbours)
+    inside = sum(len(adjacent[u] & neighbours) for u in neighbours)  # each edge twice
+    return degree * (degree - 1) // 2 - inside // 2
+
+
+def _eliminate_and_rescore(
+    adjacent: dict[str, set[str]],
+    score: dict[str, int],
+    z: str,
+    heuristic: Heuristic,
+    cardinalities: Mapping[str, int] | None,
+) -> set[str]:
+    """Eliminate z from ``adjacent``, update ``score`` (Lemma 5), and return the nodes touched."""
+    neighbours = adjacent.pop(z)
+    touched = set(neighbours)
+    fill = heuristic == "min_fill"
+    for a, b in itertools.combinations(neighbours, 2):
+        if b in adjacent[a]:
+            continue
+        if fill:  # Lemma 5(2), against the graph so far (z is still in both adjacency sets)
+            common = adjacent[a] & adjacent[b]
+            for c in common:
+                score[c] -= 1
+            touched |= common
+            score[a] += len(adjacent[a]) - len(common)
+            score[b] += len(adjacent[b]) - len(common)
+        adjacent[a].add(b)
+        adjacent[b].add(a)
+    for v in neighbours:
+        if fill:  # Lemma 5(3): N is now a clique, and z is still in adjacent[v]
+            score[v] -= len(adjacent[v]) - len(neighbours)
+        adjacent[v].remove(z)
+        if not fill:
+            score[v] = _local_score(adjacent[v], heuristic, cardinalities)
+    del score[z]
+    touched.discard(z)
+    return touched
 
 
 def _eliminate_vertex(graph: UndirectedGraph, z: str) -> None:

@@ -6,10 +6,11 @@ brute-force optimum, as a consistency check.
 """
 
 import itertools
+import time
 
 import numpy as np
 import pytest
-from support import late_network, posterior, random_evidence, random_network
+from support import late_network, posterior, random_evidence, random_network, underflow_network
 
 from probgraph import BayesianNetwork, DiscreteVariable, TabularCPD, VariableElimination
 from probgraph.exceptions import UnknownNodeError, ValidationError
@@ -412,3 +413,82 @@ def test_trace_is_a_value_object():
     assert trace == EliminationTrace((EliminationStep("A", frozenset("AB"), 4),))
     with pytest.raises(AttributeError):
         trace.steps = ()  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Incremental scores (§3.1): identical choices to full recomputation, and fast
+# ---------------------------------------------------------------------------
+
+
+def reference_greedy_order(graph: UndirectedGraph, eliminate, heuristic: str, cards) -> list[str]:
+    """The pre-§3.1 implementation: rescore every remaining vertex at every step."""
+    rank = {n: i for i, n in enumerate(graph.nodes())}
+    working = graph.copy()
+    remaining = list(eliminate)
+    order = []
+    while remaining:
+        z = min(remaining, key=lambda n: (replay_score(working, n, heuristic, cards), rank[n]))
+        order.append(z)
+        remaining.remove(z)
+        for u, v in itertools.combinations(working.neighbours(z), 2):
+            working.add_edge(u, v)
+        working.remove_node(z)
+    return order
+
+
+def random_hub_graph(rng: np.random.Generator, n: int) -> UndirectedGraph:
+    """A few hubs over a sparse background: many ties, and fill that hits the hubs."""
+    g = random_graph(rng, n, p=0.08)
+    nodes = list(g.nodes())
+    for hub in rng.choice(nodes, size=min(n, int(rng.integers(1, 4))), replace=False):
+        for v in nodes:
+            if v != hub and rng.random() < 0.6:
+                g.add_edge(str(hub), v)
+    return UndirectedGraph(list(rng.permutation(nodes)), g.edges())
+
+
+@pytest.mark.parametrize("seed", range(150))
+def test_greedy_order_matches_the_full_recomputation(seed):
+    rng = np.random.default_rng(seed + 70_000)
+    n = int(rng.integers(1, 26))
+    kind = seed % 3
+    if kind == 0:
+        g = random_graph(rng, n, p=float(rng.uniform(0.05, 0.9)))
+    elif kind == 1:
+        g = random_hub_graph(rng, n)
+    else:
+        g = random_chordal(rng, n)
+    cards = {v: int(rng.integers(1, 5)) for v in g.nodes()}
+    eliminate = [v for v in rng.permutation(g.nodes()) if rng.random() < 0.85]
+    for heuristic in HEURISTICS:
+        expected = reference_greedy_order(g, eliminate, heuristic, cards)
+        assert greedy_order(g, eliminate, heuristic, cards) == expected, heuristic
+
+
+def test_greedy_order_does_not_mutate_the_graph():
+    g = UndirectedGraph(nodes="CWXY", edges=[("C", leaf) for leaf in "WXY"])
+    before = g.copy()
+    assert greedy_order(g, ["C"], "min_fill") == ["C"]
+    assert g == before and g.nodes() == before.nodes()
+
+
+def test_a_1101_vertex_star_is_ordered_quickly():
+    """Rescoring the hub pairwise made this Θ(d^3), about 20 s. With §3.1 it is linear;
+    a generous bound keeps the test insensitive to machine speed."""
+    leaves = [f"F{i}" for i in range(1100)]
+    star = UndirectedGraph(["C", *leaves], [("C", leaf) for leaf in leaves])
+    cards = dict.fromkeys(star.nodes(), 2)
+    for heuristic in HEURISTICS:
+        start = time.perf_counter()
+        order = greedy_order(star, star.nodes(), heuristic, cards)
+        elapsed = time.perf_counter() - start
+        # Leaves first; the hub goes when it has one neighbour left and wins on rank.
+        assert order == [*leaves[:-1], "C", leaves[-1]], heuristic
+        assert elapsed < 1.0, (heuristic, elapsed)
+
+
+def test_markov_network_partition_function_on_a_large_star():
+    model = underflow_network(1100).to_markov_network()
+    start = time.perf_counter()
+    assert model.log_partition_function() == pytest.approx(0.0, abs=1e-9)
+    assert time.perf_counter() - start < 5.0
