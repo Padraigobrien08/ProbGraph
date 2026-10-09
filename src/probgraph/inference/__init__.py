@@ -8,6 +8,7 @@ from probgraph.inference.elimination_order import (
     simulate_elimination,
 )
 from probgraph.inference.junction_tree import JunctionTree
+from probgraph.inference.loopy_bp import LoopyBeliefPropagation, LoopyResult
 from probgraph.inference.variable_elimination import VariableElimination
 
 __all__ = [
@@ -17,6 +18,8 @@ __all__ = [
     "EliminationTrace",
     "Heuristic",
     "JunctionTree",
+    "LoopyBeliefPropagation",
+    "LoopyResult",
     "VariableElimination",
     "greedy_order",
     "simulate_elimination",
