@@ -374,16 +374,18 @@ check → reflect.**
 
 ## 7. Acceptance criteria for Milestone 2
 
-- [ ] The factor algebra laws (F5–F8) hold on random factors.
-- [ ] The product of CPD factors reproduces the M1 joint distribution.
-- [ ] VE matches enumeration on every random query/evidence/order combination tested.
-- [ ] The elimination order changes cost (demonstrated) but never answers.
-- [ ] Zero-probability evidence fails explicitly.
-- [ ] d-separation agrees with the moral-ancestral criterion on every DAG with ≤ 5 nodes.
-- [ ] d-separation is numerically sound, and generically complete, on random networks.
-- [ ] Pruning (barren and requisite nodes) never changes an answer.
-- [ ] Proofs P5–P7 (and P8 if task 10 is done) are documented.
-- [ ] `v0.2.0` installs fresh and passes CI.
+Evidence for each item is mapped in the README's "Milestone 2 acceptance" table.
+
+- [x] The factor algebra laws (F5–F8) hold on random factors.
+- [x] The product of CPD factors reproduces the M1 joint distribution.
+- [x] VE matches enumeration on every random query/evidence/order combination tested.
+- [x] The elimination order changes cost (demonstrated) but never answers.
+- [x] Zero-probability evidence fails explicitly.
+- [x] d-separation agrees with the moral-ancestral criterion on every DAG with ≤ 5 nodes.
+- [x] d-separation is numerically sound, and generically complete, on random networks.
+- [x] Pruning (barren and requisite nodes) never changes an answer.
+- [x] Proofs P5–P7 (and P8 if task 10 is done) are documented.
+- [ ] `v0.2.0` installs fresh and passes CI. *(Ticked when the tagged commit's CI run passes.)*
 
 ---
 

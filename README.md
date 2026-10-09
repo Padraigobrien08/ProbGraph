@@ -1,13 +1,15 @@
 # ProbGraph
 
 Discrete Bayesian networks built from first principles: DAGs, conditional
-probability tables, joint factorisation and ancestral sampling. No graph or
+probability tables, factorisation, sampling, d-separation, and exact and
+approximate inference. No graph or
 Bayesian-network library is used, and NumPy is used only for array storage and
 arithmetic. Every algorithm comes with a written mathematical justification and
 with tests designed to fail if the implementation is subtly wrong.
 
-**Status:** `v0.1.0`, which completes Milestone 1: representation, factorisation
-and sampling.
+**Status:** `v0.2.0`, which completes Milestone 2: conditional independence, evidence
+and exact inference. (`v0.1.0` was Milestone 1: representation, factorisation and
+sampling.)
 
 ## Install
 
@@ -45,9 +47,26 @@ model.sample(3, seed=0)  # [{'Rain': 'no', 'Accident': 'no', 'Traffic': 'no'}, .
 model.n_free_parameters  # 6, compared with 7 for an unrestricted joint
 ```
 
-[`examples/rain_accident_traffic.py`](examples/rain_accident_traffic.py) is a
-complete walkthrough: the exact joint table, sampled frequencies compared with
-exact probabilities, and explaining away.
+Inference on the same model:
+
+```python
+from probgraph import VariableElimination
+
+ve = VariableElimination(model)
+ve.query(["Accident"], {"Traffic": "yes"}).value({"Accident": "yes"})  # 5/23 ≈ 0.217
+ve.probability_of_evidence({"Traffic": "yes"})  # 0.3565
+model.graph.d_separated({"Accident"}, {"Rain"})  # True: the collider is unobserved
+model.graph.d_separated({"Accident"}, {"Rain"}, given={"Traffic"})  # False
+```
+
+Two complete walkthroughs:
+
+- [`examples/rain_accident_traffic.py`](examples/rain_accident_traffic.py) (M1): the
+  exact joint table, sampled frequencies compared with exact probabilities, and
+  explaining away.
+- [`examples/late_for_work.py`](examples/late_for_work.py) (M2): d-separation, exact
+  posteriors, elimination cost and pruning, and sampling estimates checked against
+  the exact answers.
 
 ## API
 
@@ -58,6 +77,10 @@ exact probabilities, and explaining away.
 | `TabularCPD(variable, parents, values)` | $p(X\mid U_1..U_k)$ | shape, finiteness, nonnegativity and per-column normalisation (`atol=1e-10`) are checked; storage is read-only; lookups are by parent name |
 | `BayesianNetwork(variables, edges)` | $\prod_i p(x_i\mid\mathrm{pa}_i)$ | CPD parents must equal the graph's parents; variables must match the model's definitions; queries re-validate after any change and require complete assignments |
 | `AncestralSampler(model, seed)` | i.i.d. draws from the joint | samples in topological order; inverse-CDF draws by hand; reproducible; `sample(a) + sample(b) == sample(a+b)` |
+| `DiscreteFactor(variables, values)` | a nonnegative table $\phi(x_S)$ | product aligns by *name*, never by axis position; `marginalise`, `reduce`, `normalise`; immutable; overflow raises |
+| `VariableElimination(model)` | exact $P(Q\mid e)$ and $P(e)$ | equals enumeration for every elimination order; min-fill by default; barren pruning by default, evidence pruning opt-in; `query_trace` shows the cost; impossible evidence raises |
+| `DAG.d_separated(xs, ys, given)` | $X\perp_G Y\mid Z$ | Bayes ball in $O(\lvert V\rvert+\lvert E\rvert)$; agrees with the moralised-ancestral criterion |
+| `RejectionSampler`, `LikelihoodWeighting` | sampling estimates of $P(Q\mid e)$ | return the estimate, $\hat P(e)$ and the effective sample size; raise when no sample carries information |
 
 All library errors derive from `probgraph.exceptions.ProbGraphError`.
 
@@ -73,6 +96,13 @@ Each implementation step is justified in [`docs/mathematics/`](docs/mathematics/
 | [joint_normalisation.md](docs/mathematics/joint_normalisation.md) | **P2**: locally normalised CPDs give a globally normalised joint; corollaries used as tests |
 | [ancestral_sampling.md](docs/mathematics/ancestral_sampling.md) | **P3**: inverse-CDF lemma and proof that ancestral sampling is exact; Bernstein-based test tolerances |
 | [parameter_reduction.md](docs/mathematics/parameter_reduction.md) | **P4**: parameter counting, telescoping for complete DAGs, Jacobian-rank experiment |
+| [factor_algebra.md](docs/mathematics/factor_algebra.md) | **P5**: factors as functions; the product as broadcasting; laws F5–F10, including distributivity |
+| [variable_elimination.md](docs/mathematics/variable_elimination.md) | **P6**: correctness and order independence; cost in terms of width; barren nodes and ancestral pruning |
+| [elimination_orders.md](docs/mathematics/elimination_orders.md) | interaction graph = moral graph; factor elimination = vertex elimination; heuristics optimal on forests and chordal graphs |
+| [d_separation.md](docs/mathematics/d_separation.md) | **P7**: Bayes ball and the walk lemma; the moralised-ancestral criterion; soundness; generic completeness (XOR); graphoid axioms; requisite evidence |
+| [sampling_inference.md](docs/mathematics/sampling_inference.md) | **P8**: rejection sampling; likelihood weighting as importance sampling; bias of the ratio estimator; effective sample size |
+
+The Milestone 2 specification is in [`docs/specs/milestone-2.md`](docs/specs/milestone-2.md).
 
 ## Milestone 1 acceptance
 
@@ -92,23 +122,49 @@ Each implementation step is justified in [`docs/mathematics/`](docs/mathematics/
 The Milestone 1 spec (v0.3) gives $P(T=1)=0.3615$ for the fixture. The correct
 value is $0.3565$, and the tests use the corrected value.
 
+## Milestone 2 acceptance
+
+| Criterion | Evidence |
+|---|---|
+| The factor algebra laws (F5–F8) hold on random factors | `test_factors.py` (each operation checked cell by cell against its definition, and each law property-tested) |
+| The product of CPD factors reproduces the M1 joint | `test_model_factors.py` (fixtures and 40 random networks) |
+| VE matches enumeration on every random query/evidence/order tested | `test_variable_elimination.py` (100 random problems × 6 orders), `test_elimination_order.py`, `test_pruning.py` |
+| The elimination order changes cost but never answers | `test_elimination_order.py::test_order_changes_cost_but_not_the_answer` (naive Bayes: 40 vs 4092 cells, identical posteriors); measured traces equal graph predictions (V8) |
+| Zero-probability evidence fails explicitly | `ZeroProbabilityEvidenceError` from `query`, `InsufficientSamplesError` from the samplers. The one documented exception is the opt-in `prune_evidence` (`d_separation.md` §9) |
+| d-separation agrees with the moral-ancestral criterion on every DAG with ≤ 5 nodes | `test_d_separation_oracles.py` (all 1,024 five-node DAGs up to relabelling, 81,920 queries), plus all 543 four-node labelled DAGs against literal trail enumeration |
+| d-separation is numerically sound and generically complete | `test_d_separation_oracles.py::test_soundness_and_generic_completeness`; the XOR network shows that completeness is only generic |
+| Pruning never changes an answer | `test_pruning.py` (barren: V7 on 80 random problems); `test_requisite_evidence.py` (requisite evidence, whenever $P(e)>0$) |
+| Proofs P5–P8 are documented | `docs/mathematics/` (the table above) |
+| `v0.2.0` installs fresh and passes CI | `.github/workflows/ci.yml` (unchanged gates, plus both examples) |
+
+The Milestone 2 spec (v1.0) printed $P(L{=}1,U{=}1)$ as 0.142012. The exact value is
+$11361/80000=0.1420125$, and the tests compare against exact fractions.
+
 ## Development
 
 ```bash
-.venv/bin/pytest                      # 221 tests, about 2 s
+.venv/bin/pytest                      # 1858 tests, about 6 s
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/mypy                        # strict mode, src/ only
 .venv/bin/python examples/rain_accident_traffic.py
+.venv/bin/python examples/late_for_work.py
 ```
 
 ## Scope and limitations
 
-These are deliberately out of scope for Milestone 1: continuous variables,
-undirected models, d-separation queries, and posterior inference (variable
-elimination, message passing). Exhaustive enumeration appears only as a test
-oracle. `joint_probability` multiplies probabilities directly, so it can
-underflow for networks with many hundreds of low-probability factors. A
-log-space variant is a candidate for a later milestone.
+Out of scope so far:
+- continuous variables;
+- undirected models (Markov networks) as a model class;
+- junction trees and message passing;
+- MAP inference;
+- MCMC;
+- learning parameters from data.
+
+Exhaustive enumeration appears only as a test oracle. All computation is in
+probability space, so products of very many small probabilities can underflow;
+log-space factors are a candidate for Milestone 3. Variable elimination recomputes
+everything for each query, and caching intermediate messages across queries is
+what junction trees add.
 
 ## Licence
 

@@ -35,8 +35,10 @@ jobs:
         run: .venv/bin/mypy
       - name: Test
         run: .venv/bin/pytest
-      - name: Run example
-        run: .venv/bin/python examples/rain_accident_traffic.py
+      - name: Run examples
+        run: |
+          .venv/bin/python examples/rain_accident_traffic.py
+          .venv/bin/python examples/late_for_work.py
 
   oldest-dependencies:
     name: Oldest supported dependencies (Python 3.11)
