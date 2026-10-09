@@ -143,4 +143,5 @@ def _log_sum_exp(values: np.ndarray, axes: tuple[int, ...]) -> np.ndarray:
     shift = np.where(np.isneginf(m), 0.0, m)
     with np.errstate(divide="ignore"):
         result = shift + np.log(np.sum(np.exp(values - shift), axis=axes, keepdims=True))
-    return np.squeeze(result, axis=axes)
+    squeezed: np.ndarray = np.squeeze(result, axis=axes)
+    return squeezed
