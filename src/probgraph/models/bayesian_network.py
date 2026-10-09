@@ -11,6 +11,7 @@ from types import MappingProxyType
 
 from probgraph.distributions import TabularCPD
 from probgraph.exceptions import UnknownNodeError, ValidationError
+from probgraph.factors import DiscreteFactor
 from probgraph.graphs import DAG
 from probgraph.variables import DiscreteVariable
 
@@ -138,6 +139,31 @@ class BayesianNetwork:
             given = {parent: assignment[parent] for parent in cpd.parent_names}
             probability *= cpd.probability(assignment[name], given)
         return probability
+
+    def factors(self) -> tuple[DiscreteFactor, ...]:
+        """Return the CPDs as factors, in topological order.
+
+        By P1 their product is the joint distribution. Validates the model first.
+        """
+        order = self._validated_order()
+        return tuple(DiscreteFactor.from_cpd(self._cpds[name]) for name in order)
+
+    def check_evidence(self, evidence: Mapping[str, str]) -> dict[str, str]:
+        """Validate a partial assignment and return it as a plain dict.
+
+        Every name must be a model variable (``UnknownNodeError``), and every
+        state must be in that variable's domain (``UnknownStateError``). Unlike
+        ``joint_probability``, the assignment does not need to cover every
+        variable.
+        """
+        if not isinstance(evidence, Mapping):
+            raise ValidationError(f"Evidence must be a mapping, got {evidence!r}.")
+        unknown = [name for name in evidence if name not in self._variables]
+        if unknown:
+            raise UnknownNodeError(f"Evidence names unknown variables {unknown}.")
+        for name, state in evidence.items():
+            self._variables[name].index_of(state)
+        return dict(evidence)
 
     def sample(self, n: int, seed: int | None = None) -> list[dict[str, str]]:
         """Draw ``n`` i.i.d. joint samples by ancestral sampling.

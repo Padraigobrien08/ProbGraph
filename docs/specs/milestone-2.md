@@ -1,4 +1,4 @@
-# ProbGraph — Milestone 2 Technical Specification (v1.0)
+# ProbGraph — Milestone 2 Technical Specification (v1.1)
 
 **Milestone:** Conditional independence, evidence and exact inference.
 **Release target:** `v0.2.0`.
@@ -293,16 +293,20 @@ Rain:
 The fixture has $1+1+4+2+2=10$ free parameters, against 31 for an unrestricted joint. All values
 below were computed by enumeration with the v0.1.0 library.
 
-| Quantity | Value | What it demonstrates |
-|---|---|---|
-| $P(L=1)$ | 0.278250 | a prior marginal through two layers |
-| $P(A=1\mid L=1)$ | 0.175202 | evidence flows *up* through a descendant of the collider |
-| $P(A=1\mid L=1,U=1)$ | 0.125429 | explaining away **two edges away**: the umbrella points to rain, and rain explains the lateness |
-| $P(A=1\mid L=1,U=0)$ | 0.227085 | no umbrella, so an accident is the more likely cause |
-| $P(A=1\mid U=1)$ | 0.100000 | $A\perp U$ marginally |
-| $P(R=1\mid U=1)$ | 0.784615 | diagnostic reasoning (child to parent) |
-| $P(A=1\mid T=1,U=1)$ | 0.132976 | compare $P(A=1\mid T=1)=0.217391$ |
-| $P(L=1,U=1)$ | 0.142012 | target for `probability_of_evidence` |
+| Quantity | Exact | Decimal | What it demonstrates |
+|---|---|---|---|
+| $P(L=1)$ | $1113/4000$ | 0.27825 | a prior marginal through two layers |
+| $P(A=1\mid L=1)$ | $65/371$ | 0.175202 | evidence flows *up* through a descendant of the collider |
+| $P(A=1\mid L=1,U=1)$ | $475/3787$ | 0.125429 | explaining away **two edges away**: the umbrella points to rain, and rain explains the lateness |
+| $P(A=1\mid L=1,U=0)$ | $275/1211$ | 0.227085 | no umbrella, so an accident is the more likely cause |
+| $P(A=1\mid U=1)$ | $1/10$ | 0.1 | $A\perp U$ marginally |
+| $P(R=1\mid U=1)$ | $51/65$ | 0.784615 | diagnostic reasoning (child to parent) |
+| $P(A=1\mid T=1,U=1)$ | $1165/8761$ | 0.132976 | compare $P(A=1\mid T=1)=5/23\approx0.217391$ |
+| $P(L=1,U=1)$ | $11361/80000$ | 0.1420125 | target for `probability_of_evidence` |
+
+Every CPD entry is a short decimal, so every value is rational. Tests compare against the exact
+fractions with `atol=1e-12`. (Spec v1.0 printed $P(L=1,U=1)$ rounded to 0.142012, which is exactly
+at the edge of a $\pm5\times10^{-7}$ tolerance. Corrected in v1.1.)
 
 **d-separation facts, each checked numerically against the joint:**
 
@@ -325,7 +329,7 @@ $$P(A,L{=}1)=P(A)\sum_r P(r)\Big[\sum_u P(u\mid r)\Big]\sum_t P(t\mid r,A)\,P(L{
 - The bracket is 1 by C2: $U$ is a **barren node**. This is why pruning is exact (V7).
 - Each inner sum creates a new factor: $\tau_1(r,A)=\sum_t P(t\mid r,A)P(L{=}1\mid t)$, then
   $\tau_2(A)=\sum_r P(r)\tau_1(r,A)$.
-- Normalising $P(A)\tau_2(A)$ gives $P(A=1\mid L=1)=0.175202$.
+- Normalising $P(A)\tau_2(A)$ gives $P(A=1\mid L=1)=65/371\approx0.175202$.
 
 ---
 
