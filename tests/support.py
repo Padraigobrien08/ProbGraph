@@ -286,3 +286,42 @@ def underflow_network(n_features: int = 1100) -> BayesianNetwork:
 def underflow_evidence(n_zeros: int, n_ones: int) -> dict[str, str]:
     """Observe the first ``n_zeros`` features as "0" and the next ``n_ones`` as "1"."""
     return {f"F{i}": ("0" if i < n_zeros else "1") for i in range(n_zeros + n_ones)}
+
+
+# ---------------------------------------------------------------------------
+# M3 fixture F2: the misconception network (Koller & Friedman §4.1)
+# ---------------------------------------------------------------------------
+
+STUDENTS = tuple(DiscreteVariable(n, ("0", "1")) for n in "ABCD")
+MISCONCEPTION_POTENTIALS = {
+    ("A", "B"): [[30.0, 5.0], [1.0, 10.0]],
+    ("B", "C"): [[100.0, 1.0], [1.0, 100.0]],
+    ("C", "D"): [[1.0, 100.0], [100.0, 1.0]],
+    ("D", "A"): [[100.0, 1.0], [1.0, 100.0]],
+}
+MISCONCEPTION_Z = 7_201_840
+
+
+def misconception_factors() -> list[DiscreteFactor]:
+    by_name = {v.name: v for v in STUDENTS}
+    return [
+        DiscreteFactor([by_name[u], by_name[v]], table)
+        for (u, v), table in MISCONCEPTION_POTENTIALS.items()
+    ]
+
+
+def gibbs_table(variables: Sequence[DiscreteVariable], factors: Iterable) -> np.ndarray:
+    """The unnormalised product ∏ φ, by brute force over every assignment.
+
+    Uses each factor's ``value`` lookup and plain multiplication only, so it shares
+    no code with the factor algebra. Accepts DiscreteFactors.
+    """
+    factors = list(factors)
+    table = np.empty(tuple(v.cardinality for v in variables))
+    for index in itertools.product(*(range(v.cardinality) for v in variables)):
+        x = {v.name: v.states[i] for v, i in zip(variables, index, strict=True)}
+        product = 1.0
+        for phi in factors:
+            product *= phi.value({n: x[n] for n in phi.names})
+        table[index] = product
+    return table

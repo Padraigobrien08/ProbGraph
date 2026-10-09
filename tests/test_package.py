@@ -14,6 +14,7 @@ def test_public_api():
         "DAG",
         "DiscreteFactor",
         "DiscreteVariable",
+        "MarkovNetwork",
         "TabularCPD",
         "VariableElimination",
     }

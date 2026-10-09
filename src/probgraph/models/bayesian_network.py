@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 from probgraph._assignments import check_partial_assignment
 from probgraph.distributions import TabularCPD
@@ -15,6 +16,9 @@ from probgraph.exceptions import UnknownNodeError, ValidationError
 from probgraph.factors import DiscreteFactor
 from probgraph.graphs import DAG
 from probgraph.variables import DiscreteVariable
+
+if TYPE_CHECKING:
+    from probgraph.models.markov_network import MarkovNetwork
 
 
 class BayesianNetwork:
@@ -158,6 +162,15 @@ class BayesianNetwork:
         variable.
         """
         return check_partial_assignment(self._variables, evidence)
+
+    def to_markov_network(self) -> MarkovNetwork:
+        """The same distribution as a Markov network over the moral graph, with Z = 1.
+
+        Collider independences are no longer visible as separations (P10 §3).
+        """
+        from probgraph.models.markov_network import MarkovNetwork
+
+        return MarkovNetwork(self.variables, self.factors())
 
     def sample(self, n: int, seed: int | None = None) -> list[dict[str, str]]:
         """Draw ``n`` i.i.d. joint samples by ancestral sampling.
