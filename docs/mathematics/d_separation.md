@@ -5,8 +5,8 @@
 > this from the graph alone. Bayes ball decides it in time linear in the size of the graph.
 
 This note covers the definition, the three local structures, and the correctness of Bayes ball
-(M2.7). Soundness, generic completeness and the moralised-ancestral criterion are added in
-M2.8 (§5).
+(§1–§4), then the moralised-ancestral criterion, soundness, generic completeness and the
+graphoid axioms (§5–§8).
 
 ---
 
@@ -121,11 +121,110 @@ once, and each scans its parents and children once. Total: **$O(|V|+|E|)$**. Enu
 directly can take exponential time. The tests do enumerate them, on small graphs, as an oracle
 that implements §1 literally.
 
-## 5. Soundness and completeness (added in M2.8)
+## 5. The moralised-ancestral criterion
 
-This section will contain:
+Let $A=\mathrm{An}^*(X\cup Y\cup Z)$, and let $\mathcal M_A=\mathcal M(G[A])$ be the moral graph
+of the subgraph of $G$ induced on $A$ (`moral_graph(dag, restrict_to=A)`;
+[`elimination_orders.md`](elimination_orders.md) §1 explains why this is not the same as
+restricting $\mathcal M(G)$ to $A$).
 
-- **Soundness:** $X\perp_G Y\mid Z\Rightarrow X\perp Y\mid Z$ in every $P$ that factorises over
-  $G$, proved through the moralised ancestral graph.
-- **Completeness for generic parameters** (Meek, 1995).
-- **Equivalence** of Bayes ball and the moralised-ancestral criterion.
+**Theorem 2 (Lauritzen, Dawid, Larsen & Leimer, 1990).** $X\perp_G Y\mid Z$ exactly when $Z$
+separates $X$ from $Y$ in $\mathcal M_A$: every path from $X$ to $Y$ in $\mathcal M_A$ passes
+through $Z$.
+
+*Proof that an active trail gives a path avoiding $Z$.* Let $\pi$ be an active trail from $x$ to $y$.
+
+1. *$\pi$ lies in $A$.* A collider on $\pi$ is in $\mathrm{An}^*(Z)\subseteq A$. A non-collider
+   has an out-edge along $\pi$. Following the trail in that direction, it keeps going down
+   until it reaches a collider or an endpoint. So the non-collider is an ancestor of something
+   in $A$, and is therefore in $A$.
+2. *Skip the colliders.* For each collider $p\to c\leftarrow q$ on $\pi$, its trail neighbours
+   $p$ and $q$ are parents of $c\in A$, so they are married in $\mathcal M_A$. Replace
+   $p,c,q$ by the edge $p$–$q$. Neither $p$ nor $q$ is a collider (each has an out-edge to $c$).
+   What remains is a path in $\mathcal M_A$ whose interior nodes are all non-colliders of an
+   active trail, so none of them is in $Z$. $\square$
+
+*Proof that a path avoiding $Z$ gives an active trail.* Let $x=u_0,\ldots,u_m=y$ be a path in
+$\mathcal M_A$ with no interior node in $Z$. We build a d-connecting walk in $G$ and then apply
+Lemma 1.
+
+1. *Expand the path into a walk.* Keep every edge of $G$ as it is. Replace each marriage edge
+   $u$–$v$ by $u\to c\leftarrow v$, where $c\in A$ is a common child. Call the result $w$.
+   Every non-collider of $w$ is some $u_i$, so it is not in $Z$. A collider $c$ of $w$ is open
+   when $c\in\mathrm{An}^*(Z)$. Call the colliders that are not open **bad**. A bad collider is
+   in $A\setminus\mathrm{An}^*(Z)$, so it is an ancestor of $x$ or of $y$, and no node on a
+   directed path from it is in $Z$ (otherwise it would be in $\mathrm{An}^*(Z)$).
+2. *Reroute around bad colliders.* Let $w_1$ be the bad collider closest to $y$ among those
+   that are ancestors of $x$. Replace the part of $w$ from $x$ to $w_1$ by a directed path
+   $w_1\to\cdots\to x$, traversed upwards from $x$. Its interior nodes are unobserved chain
+   nodes, and $w_1$ becomes a non-collider that is not in $Z$. Symmetrically, let $w_2$ be the
+   first bad collider after $w_1$, which must be an ancestor of $y$. Replace the part from
+   $w_2$ to $y$ by a directed path to $y$. Any bad collider before $w_1$ has been cut off.
+   Any bad collider between $w_1$ and $w_2$ would be an ancestor of $y$ before $w_2$, which is
+   impossible. Any bad collider after $w_2$ has been cut off. (If a rerouting path passes
+   through the other endpoint, truncate the walk there. What remains is a d-connecting walk
+   already.)
+3. The result is a d-connecting walk from $x$ to $y$. By Lemma 1, there is an active trail. $\square$
+
+Bayes ball (§4) and Theorem 2 are two different algorithms for the same relation. The tests
+check that they agree on every query of every DAG with up to 5 nodes, and on random larger ones.
+
+## 6. Soundness
+
+**Lemma 3 (separation implies independence).** Let $H$ be an undirected graph, and let
+$P(x_V)=\prod_C\psi_C(x_C)$ where every $C$ is a clique of $H$. If $Z$ separates $X$ from $Y$ in
+$H$, then $X\perp Y\mid Z$ under $P$.
+
+*Proof.* Let $X'$ be the set of nodes reachable from $X$ in $H-Z$, and let
+$W=V\setminus(X'\cup Z)$, so that $Y\subseteq W$. No clique meets both $X'$ and $W$: an edge
+between a node of $X'$ and a node of $W$ would make that node of $W$ reachable. So each
+$\psi_C$ depends only on $(x_{X'},z)$ or only on $(x_W,z)$. Grouping the factors gives
+$P=f(x_{X'},z)\,g(x_W,z)$. Hence
+$P(x_{X'},x_W\mid z)=\frac{f}{\sum f}\cdot\frac{g}{\sum g}$, which is $X'\perp W\mid Z$.
+Marginalising (decomposition) gives $X\perp Y\mid Z$. $\square$
+
+**Theorem 4 (soundness).** If $X\perp_G Y\mid Z$, then $X\perp Y\mid Z$ in **every** $P$ that
+factorises over $G$.
+
+*Proof.* By P2's corollary C-a, the marginal on the ancestral set is
+$P(x_A)=\prod_{i\in A}p(x_i\mid\mathrm{pa}_i)$. Each scope $\{i\}\cup\mathrm{pa}_i$ is a clique of
+$\mathcal M_A$, because the parents are married. By Theorem 2, $Z$ separates $X$ from $Y$ in
+$\mathcal M_A$, so Lemma 3 applies to $P(x_A)$. Since $X\cup Y\cup Z\subseteq A$, that is the
+statement. $\square$
+
+## 7. Completeness, but only for generic parameters
+
+The converse cannot hold for *every* $P$. **Counterexample (XOR).** Take fair coins $X$ and $Y$
+with $X\to W\leftarrow Y$ and $W=X\oplus Y$. Then $X\perp W$ numerically: $W$ is a fair coin
+whatever $X$ is. Yet $X$ and $W$ are adjacent, so they are not d-separated. Such a $P$ is called
+**unfaithful** to $G$. The tests reproduce this exactly.
+
+**Theorem 5 (Meek, 1995; Geiger & Pearl, 1990).** For every DAG, the CPD parameters that give
+an unfaithful $P$ form a set of Lebesgue measure zero.
+
+*Sketch.* Fix a triple $(X,Y,Z)$ that is not d-separated. "$X\perp Y\mid Z$" is a set of
+polynomial equations in the CPD entries. The polynomial is not identically zero: CPDs that
+almost copy values along an active trail make it non-zero. The zero set of a non-zero
+polynomial has measure zero, and a finite union of such sets (over all triples) still does. $\square$
+
+In tests: with Dirichlet-random CPDs (cardinalities ≥ 2), every d-connected triple shows
+measurable dependence, and every d-separated triple shows independence up to rounding.
+Cardinality-1 variables are excluded, because a constant is independent of everything.
+
+## 8. Graphoid axioms
+
+d-separation satisfies the **semi-graphoid** axioms. It also satisfies **intersection** and
+**composition**, which probabilistic independence does not satisfy in general:
+
+| Axiom | Statement | Holds for $\perp$ in general? |
+|---|---|---|
+| symmetry | $X\perp Y\mid Z\Rightarrow Y\perp X\mid Z$ | yes |
+| decomposition | $X\perp YW\mid Z\Rightarrow X\perp Y\mid Z$ | yes |
+| weak union | $X\perp YW\mid Z\Rightarrow X\perp Y\mid ZW$ | yes |
+| contraction | $X\perp Y\mid Z\ \wedge\ X\perp W\mid ZY\Rightarrow X\perp YW\mid Z$ | yes |
+| intersection | $X\perp Y\mid ZW\ \wedge\ X\perp W\mid ZY\Rightarrow X\perp YW\mid Z$ | positive $P$ only |
+| composition | $X\perp Y\mid Z\ \wedge\ X\perp W\mid Z\Rightarrow X\perp YW\mid Z$ | **no**: XOR again, with $X\perp Y$, $X\perp W$, but $X\not\perp YW$ |
+
+For d-separation, composition is immediate from the definition: "no active trail from $X$ to
+$Y\cup W$" is a statement about each target separately. The tests check every row on random
+DAGs, and use the XOR network to show that composition fails for probabilities.
