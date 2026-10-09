@@ -1,4 +1,4 @@
-# ProbGraph — Milestone 3 Technical Specification (v1.2)
+# ProbGraph — Milestone 3 Technical Specification (v1.3)
 
 **Milestone:** Message passing: Markov networks, clique trees and belief propagation.
 **Release target:** `v0.3.0`.
@@ -179,7 +179,7 @@ with an inward sweep to a root followed by an outward sweep.
 | C4 | Every clique has the same total: $\log\sum\beta_i=\log P(e)$ (or $\log Z_e$ for Markov networks). |
 | C5 | Every single-variable marginal equals variable elimination and enumeration. |
 | C6 | The result does not depend on the choice of root or the order within a sweep. |
-| C7 | **Cost:** one calibration answers all $n$ marginals with fewer table cells than $n$ separate VE queries (counted, as in M2 traces). |
+| C7 | **Cost** (revised in M3.7, after measurement): with **downstream evidence**, one calibration answers all $n$ marginals with far fewer table cells than $n$ separate pruned VE queries, and it always beats unpruned VE. Without evidence, pruned VE can be cheaper on sparse DAGs. That is measured and documented (message_passing.md §9), not hidden. |
 | C8 | Evidence with $P(e)=0$ raises `ZeroProbabilityEvidenceError`; tiny but positive $P(e)$ does not (L5). |
 
 ### 3.5 *(optional)* Loopy belief propagation
@@ -285,7 +285,7 @@ as listed: log space first, because every later component computes in it.
 - [ ] Every constructed clique tree satisfies the running intersection property (brute force) on all small graphs tested.
 - [ ] One calibration reproduces every M2 fixture posterior and all of F2's marginals as exact fractions.
 - [ ] Calibrated marginals equal VE on random BNs and MNs, with and without evidence.
-- [ ] Calibration answers all marginals at lower measured cost than repeated VE.
+- [ ] Calibration answers all marginals at lower measured cost than repeated VE when evidence is downstream (C7 as revised), and the no-evidence counter-case is documented.
 - [ ] Proofs P9–P12 (and P13 if task 8 is done) are documented.
 - [ ] `v0.3.0` installs fresh and passes CI.
 

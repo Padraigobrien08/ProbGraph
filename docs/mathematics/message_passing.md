@@ -109,3 +109,55 @@ log-sum-exp of any belief. The implementation always works in log space (spec �
 by marginalising that clique's belief (C3). A query spanning several cliques would need
 additional message passing. Spec ⚑6 decides to raise an error pointing to variable elimination
 instead.
+
+## 8. Evidence
+
+Reduce every factor by the evidence before building the tree (P5's indicator view):
+$\phi_k\mapsto\phi_k[e]$. Then $\prod_i\psi_i=\tilde P[e]$, and Theorem 3, applied to the reduced
+factors, gives
+$$\beta_i=\sum_{V\setminus(C_i\cup E)}\tilde P[e]\;\propto\;P(C_i\mid e).$$
+
+- **The observed variables leave the graph.** Reduction removes them from every scope, so the
+  interaction graph of the reduced factors is the original graph with the observed vertices
+  deleted (`elimination_orders.md` §1). The tree is built on that smaller graph, which gives
+  smaller cliques and cheaper messages. A factor reduced to a scalar is assigned to any clique,
+  where it only rescales the beliefs. If every variable is observed, there is no tree, and
+  $Z(e)$ is the product of the scalars.
+- **$P(e)$ comes for free.** Every clique has the same total,
+  $Z(e)=\sum_{x:x_E=e}\tilde P(x)$, by C4 applied to the reduced factors. So
+  $\log P(e)=\log Z(e)-\log Z$, where $\log Z$ is the evidence-free partition function: 0 for a
+  Bayesian network, `MarkovNetwork.log_partition_function()` otherwise.
+- **Zero detection is exact (C8).** In log space, $\log Z(e)=-\infty$ exactly when the evidence
+  is impossible (P9 §8). The tree can still be built, and `log_probability_of_evidence` returns
+  $-\infty$, but every posterior query raises `ZeroProbabilityEvidenceError`. Tiny but possible
+  evidence, such as fixture F3 with $\log P(e)\approx-784.9$, is handled exactly.
+- **Observed variables in queries.** `marginal(x)` for an observed $x$ returns the point mass
+  at its observed value, which is the true $P(x\mid e)$. A joint `query` that includes an observed
+  variable is rejected, as in `VariableElimination`.
+
+## 9. Measuring cost (C7)
+
+Both engines are charged in the same currency: **table cells**.
+
+- **Variable elimination:** `query_trace(...).total_cost`, the sum of the sizes of the product
+  tables $\psi_z$ (M2).
+- **Junction tree:** `calibration_cost()`. Each message $\delta_{i\to j}$ is charged
+  $|\mathcal X_{C_i}|$, the size of the product table it sums. Each belief is charged
+  $|\mathcal X_{C_i}|$ again.
+
+**What was measured, and what that means.** The comparison depends on how much variable
+elimination can **prune** (P6 §5). P(X) needs only $\mathrm{An}^*(\{X\}\cup E)$.
+
+| Situation | Measured (sparse random DAGs, 25–30 binary variables) |
+|---|---|
+| Evidence at the leaves | calibration is **4–10× cheaper** than pruned VE (e.g. 240 vs 1,662 cells). The ancestral sets cover most of the network, so every query pays nearly full price. |
+| No evidence, VE **without** pruning | calibration is about **10× cheaper** |
+| No evidence, VE **with** pruning | pruned VE is often **cheaper** (212–1,652 vs 386–2,476 cells). Each query keeps only $X$'s few ancestors, while calibration pays for the whole tree. |
+| A chain of $n$ variables, no evidence | calibration $\approx12n$ cells against $\approx2n^2$: cheaper for $n\gtrsim10$. The later variables have long ancestral chains. |
+
+So calibration is the right tool when **many marginals are wanted given evidence**: diagnosis
+from observed symptoms, or the E-step of learning with missing data. For a few prior marginals
+of a sparse model, pruned variable elimination can be cheaper. The first draft of this section,
+and spec v1.2's C7, claimed an unconditional advantage. Measuring showed that to be false
+without evidence, and both are corrected. The tests pin down both sides, including a case where
+variable elimination wins.
