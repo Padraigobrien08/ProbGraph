@@ -1,10 +1,14 @@
 name: CI
 
+# Pushes and pull requests run on Linux only. macOS runners cost 10x the minutes on a private
+# repository, so the full Linux + macOS matrix runs only when started by hand
+# ("Run workflow", or `gh workflow run CI`), which is done on a release commit before tagging.
+# Tag pushes do not trigger a run: the tagged commit has already passed.
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: ${{ github.event_name == 'workflow_dispatch' && fromJSON('["ubuntu-latest", "macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4

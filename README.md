@@ -325,6 +325,10 @@ Testing during M5 changed the spec three times (now v1.3):
 .venv/bin/python examples/umbrella_world.py
 ```
 
+CI runs on Linux (Python 3.11–3.13, the oldest supported dependencies, and fresh wheel and
+sdist installs) for every push and pull request. The full Linux and macOS matrix runs on
+demand, with `gh workflow run CI`, on each release commit before it is tagged.
+
 ## Scope and limitations
 
 Out of scope so far:
