@@ -1,4 +1,4 @@
-# ProbGraph — Milestone 5 Technical Specification (v1.1)
+# ProbGraph — Milestone 5 Technical Specification (v1.2)
 
 **Milestone:** Temporal models: hidden Markov models, forward–backward, max-product (Viterbi and
 MPE), and Baum–Welch.
@@ -6,6 +6,8 @@ MPE), and Baum–Welch.
 **Status:** Accepted 2026-10-09. All §9 decisions are confirmed with their proposed defaults.
 **v1.1 (M5.3):** ⚑3 revised: both sweeps run the normalised recursion in log space. Searching extreme
 models found linear (scaled) arithmetic wrong by up to 1.0 (forward_backward.md §4).
+**v1.2 (M5.6):** W6 corrected: equal emission rows are a fixed point only when π is also stationary
+for A (baum_welch.md Theorem 1); W1 accounts for M4 filling in counts for missing observations.
 **Primary objective:** Model sequences with a hidden Markov chain. Compute filtered, smoothed and
 predicted beliefs, the most probable hidden path, and the parameters from unlabelled sequences.
 Prove that each algorithm is a known one from Milestones 2–4 specialised to a chain, and test it
@@ -162,12 +164,12 @@ class BaumWelchResult:
 
 | ID | Statement |
 |---|---|
-| W1 | Expected counts ($\sum_t\gamma_t$, $\sum_t\xi_t$, and emissions) equal brute force over all paths, **and** equal M4's `expected_counts` on the unrolled network summed over the tied families. That second oracle is entirely independent code. |
+| W1 | Expected counts ($\sum_t\gamma_t$, $\sum_t\xi_t$, and emissions) equal brute force over all paths, **and** equal M4's `expected_counts` on the unrolled network summed over the tied families (for emissions, minus M4's filled-in counts $\gamma_t(i)B_{im}$ at missing observations: both are valid EM, with the same fixed points). That second oracle is entirely independent code. |
 | W2 | One iteration on fixture F3 gives the exact fractions in §4. |
 | W3 | **Monotonicity:** `log_objective` never decreases (to $10^{-10}$); this is P16's theorem with tied parameters. |
 | W4 | With hidden states observed, the estimate is the transition/emission count ratios (the M4 MLE). |
 | W5 | **Recovery:** from long sequences sampled from a known HMM, the estimate is close to the truth **up to a relabelling of the hidden states**, and the likelihood is at least that of the truth. |
-| W6 | A symmetric initialisation (all rows of the emission matrix equal) is a fixed point, as in M4's F4. |
+| W6 | A symmetric initialisation (all rows of the emission matrix equal, **and** $\pi$ stationary for $A$) reaches a fixed point in one iteration, with every emission row equal to the observed symbol frequencies. Without stationarity the rows separate. |
 
 ### 3.5 *(optional)* Dynamic Bayesian networks
 
