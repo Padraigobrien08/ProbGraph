@@ -16,9 +16,10 @@ uv venv && uv pip install -e ".[dev]"
 from probgraph import DAG, DiscreteVariable
 
 rain = DiscreteVariable("Rain", ("no", "yes"))
-dag = DAG(nodes=["Rain", "Accident", "Traffic"],
-          edges=[("Rain", "Traffic"), ("Accident", "Traffic")])
-dag.topological_sort()   # ['Rain', 'Accident', 'Traffic']
+dag = DAG(
+    nodes=["Rain", "Accident", "Traffic"], edges=[("Rain", "Traffic"), ("Accident", "Traffic")]
+)
+dag.topological_sort()  # ['Rain', 'Accident', 'Traffic']
 ```
 
 The mathematical background is in [`docs/mathematics/`](docs/mathematics/).

@@ -67,7 +67,7 @@ def joint_table(model: BayesianNetwork) -> np.ndarray:
     variables = model.variables
     table = np.empty(tuple(v.cardinality for v in variables))
     for index in itertools.product(*(range(v.cardinality) for v in variables)):
-        assignment = {v.name: v.states[i] for v, i in zip(variables, index)}
+        assignment = {v.name: v.states[i] for v, i in zip(variables, index, strict=True)}
         table[index] = model.joint_probability(assignment)
     return table
 
@@ -81,7 +81,7 @@ def probability_of(
     variables = model.variables
     numerator = denominator = 0.0
     for states in itertools.product(*(v.states for v in variables)):
-        assignment = dict(zip((v.name for v in variables), states))
+        assignment = dict(zip((v.name for v in variables), states, strict=True))
         if given(assignment):
             p = model.joint_probability(assignment)
             denominator += p

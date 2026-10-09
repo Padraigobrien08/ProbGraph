@@ -45,7 +45,8 @@ def test_zero_mass_states_are_never_selected_at_any_position():
 
 
 def test_cumulative_table_ends_at_exactly_one_despite_rounding():
-    # The column sums to 1 - 5e-11, which C2 accepts. The last CDF entry must still be exactly 1.0.
+    # The column sums to 1 - 5e-11, which C2 accepts.
+    # The last CDF entry must still be exactly 1.0.
     values = np.array([[0.3, 1.0], [0.7 - 5e-11, 0.0]])
     cdf = cumulative_table(values)
     assert (cdf[-1] == 1.0).all()
@@ -114,9 +115,7 @@ def test_zero_probability_joint_events_never_appear():
     model = copy_chain(["A", "B", "C"])
     # The enumerated joint and the sampler agree on which events are impossible.
     table = joint_table(model)
-    impossible = {
-        idx for idx in itertools.product(range(3), repeat=3) if table[idx] == 0.0
-    }
+    impossible = {idx for idx in itertools.product(range(3), repeat=3) if table[idx] == 0.0}
     for s in model.sample(5_000, seed=3):
         idx = tuple("rgb".index(s[n]) for n in "ABC")
         assert idx not in impossible
@@ -137,7 +136,9 @@ def test_singleton_domain():
 
 def test_same_seed_same_samples():
     model = rain_network()
-    assert AncestralSampler(model, seed=42).sample(500) == AncestralSampler(model, seed=42).sample(500)
+    assert AncestralSampler(model, seed=42).sample(500) == AncestralSampler(model, seed=42).sample(
+        500
+    )
     assert model.sample(500, seed=42) == AncestralSampler(model, seed=42).sample(500)
 
 
@@ -233,8 +234,9 @@ def test_explaining_away_is_visible_in_samples(fixture_samples):
 
 
 def test_consecutive_samples_are_independent(fixture_samples):
-    # S5: use disjoint pairs (2k, 2k+1). If nothing carries over between samples, each pair is independent.
-    pairs = list(zip(fixture_samples[0::2], fixture_samples[1::2]))
+    # S5: use disjoint pairs (2k, 2k+1). If nothing carries over between samples,
+    # each pair is independent.
+    pairs = list(zip(fixture_samples[0::2], fixture_samples[1::2], strict=True))
     for var, state, p in [("Rain", "yes", 0.3), ("Traffic", "yes", 0.3565)]:
         both = sum(1 for a, b in pairs if a[var] == state and b[var] == state)
         assert_frequency(both, len(pairs), p * p, f"P({var}_k={state}, {var}_k+1={state})")

@@ -43,7 +43,9 @@ class BayesianNetwork:
         edges: Iterable[tuple[str, str]],
     ) -> None:
         if isinstance(variables, DiscreteVariable) or not isinstance(variables, Iterable):
-            raise ValidationError(f"variables must be a sequence of DiscreteVariable, got {variables!r}.")
+            raise ValidationError(
+                f"variables must be a sequence of DiscreteVariable, got {variables!r}."
+            )
         variables = tuple(variables)
         for v in variables:
             if not isinstance(v, DiscreteVariable):

@@ -6,5 +6,5 @@ from probgraph.models import BayesianNetwork
 from probgraph.sampling import AncestralSampler
 from probgraph.variables import DiscreteVariable
 
-__all__ = ["AncestralSampler", "BayesianNetwork", "DAG", "DiscreteVariable", "TabularCPD"]
+__all__ = ["DAG", "AncestralSampler", "BayesianNetwork", "DiscreteVariable", "TabularCPD"]
 __version__ = "0.1.0.dev0"

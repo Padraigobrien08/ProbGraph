@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Set
 from dataclasses import dataclass, field
 from types import MappingProxyType
+from typing import cast
 
 from probgraph.exceptions import UnknownStateError, ValidationError
 
@@ -32,14 +33,16 @@ class DiscreteVariable:
         if not isinstance(self.name, str) or not self.name:
             raise ValidationError(f"Variable name must be a non-empty string, got {self.name!r}.")
 
-        states = _as_ordered_tuple(self.name, self.states)
-        if not states:
+        raw = _as_ordered_tuple(self.name, self.states)
+        if not raw:
             raise ValidationError(f"Variable {self.name!r} must have at least one state.")
-        for state in states:
+        for state in raw:
             if not isinstance(state, str) or not state:
                 raise ValidationError(
-                    f"Variable {self.name!r}: state labels must be non-empty strings, got {state!r}."
+                    f"Variable {self.name!r}: state labels must be non-empty strings, "
+                    f"got {state!r}."
                 )
+        states = cast(tuple[str, ...], raw)  # every element was checked to be a str above
         if len(set(states)) != len(states):
             duplicates = sorted({s for s in states if states.count(s) > 1})
             raise ValidationError(f"Variable {self.name!r} has duplicate states: {duplicates}.")
@@ -62,7 +65,7 @@ class DiscreteVariable:
             ) from None
 
 
-def _as_ordered_tuple(name: str, states: Iterable[str]) -> tuple:
+def _as_ordered_tuple(name: str, states: Iterable[str]) -> tuple[object, ...]:
     if isinstance(states, str):
         raise ValidationError(
             f"Variable {name!r}: states must be a sequence of labels, not a single string."

@@ -107,13 +107,13 @@ def test_fixture_lookups():
 
 def test_missing_parent_assignment_is_rejected():
     cpd = traffic_given_rain_accident()
-    with pytest.raises(ValidationError, match="missing.*Accident"):
+    with pytest.raises(ValidationError, match=r"missing.*Accident"):
         cpd.probability("yes", {"Rain": "yes"})
 
 
 def test_unknown_parent_in_assignment_is_rejected():
     cpd = traffic_given_rain()
-    with pytest.raises(ValidationError, match="unexpected.*Weekend"):
+    with pytest.raises(ValidationError, match=r"unexpected.*Weekend"):
         cpd.probability("yes", {"Rain": "yes", "Weekend": "no"})
 
 
@@ -307,7 +307,7 @@ def test_random_valid_tables_round_trip_through_named_lookup(case):
     cpd = TabularCPD(child, parents, values)
 
     for config in itertools.product(*(range(p.cardinality) for p in parents)):
-        assignment = {p.name: p.states[i] for p, i in zip(parents, config)}
+        assignment = {p.name: p.states[i] for p, i in zip(parents, config, strict=True)}
         dist = cpd.distribution(assignment)
         # C1, C2 on every fibre.
         assert (dist >= 0).all()

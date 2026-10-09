@@ -1,3 +1,4 @@
+import contextlib
 import itertools
 
 import numpy as np
@@ -14,7 +15,7 @@ from probgraph.exceptions import CycleError, UnknownNodeError, ValidationError
 
 
 def chain(*nodes: str) -> DAG:
-    return DAG(nodes=nodes, edges=list(zip(nodes, nodes[1:])))
+    return DAG(nodes=nodes, edges=list(itertools.pairwise(nodes)))
 
 
 def adjacency(dag: DAG) -> tuple[list[str], np.ndarray]:
@@ -297,15 +298,13 @@ def test_removal_preserves_invariants(history, data):
     nodes, attempts = history
     dag = DAG(nodes=nodes)
     for u, v in attempts:
-        try:
+        with contextlib.suppress(CycleError):
             dag.add_edge(u, v)
-        except CycleError:
-            pass
     for u, v in data.draw(st.lists(st.sampled_from(list(dag.edges()) or [(nodes[0], nodes[0])]))):
         dag.remove_edge(u, v)
         assert (u, v) not in dag.edges()
         assert v not in dag.children(u) and u not in dag.parents(v)
 
-    names, a = adjacency(dag)
+    _, a = adjacency(dag)
     assert is_nilpotent(a)
     assert_valid_topological_order(dag, dag.topological_sort())

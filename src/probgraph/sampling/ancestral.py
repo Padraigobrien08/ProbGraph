@@ -38,7 +38,8 @@ def inverse_cdf(cdf: np.ndarray, u: np.ndarray) -> np.ndarray:
     returned.
     """
     cdf = cdf if cdf.ndim > 1 else cdf[:, np.newaxis]
-    return np.count_nonzero(cdf <= np.asarray(u)[np.newaxis, ...], axis=0)
+    counts: np.ndarray = np.count_nonzero(cdf <= np.asarray(u)[np.newaxis, ...], axis=0)
+    return counts
 
 
 class AncestralSampler:
@@ -75,7 +76,7 @@ class AncestralSampler:
         names = [v.name for v in self._variables]
         states = [v.states for v in self._variables]
         return [
-            {name: domain[i] for name, domain, i in zip(names, states, row)}
+            {name: domain[i] for name, domain, i in zip(names, states, row, strict=True)}
             for row in indices.tolist()
         ]
 
@@ -85,14 +86,15 @@ class AncestralSampler:
         indices = np.zeros((n, len(self._variables)), dtype=np.intp)
         for step, name in enumerate(self._order):
             # Parent columns were filled in by earlier steps (G2 / S2).
-            parent_indices = tuple(indices[:, self._column[p]] for p in self._parents[name])
+            parent_indices = [indices[:, self._column[p]] for p in self._parents[name]]
             cdf = self._cdfs[name]
-            columns = cdf[(slice(None), *parent_indices)] if parent_indices else cdf
+            selection: tuple[slice | np.ndarray, ...] = (slice(None), *parent_indices)
+            columns = cdf[selection] if parent_indices else cdf
             indices[:, self._column[name]] = inverse_cdf(columns, uniforms[:, step])
         return indices
 
 
-def _as_count(n: object) -> int:
+def _as_count(n: int) -> int:
     if isinstance(n, bool):
         raise ValidationError(f"Sample size must be a non-negative integer, got {n!r}.")
     try:

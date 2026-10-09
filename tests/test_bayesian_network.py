@@ -13,7 +13,6 @@ from support import (
     rain_cpd,
     rain_network,
     rain_network_structure,
-    traffic_cpd,
 )
 
 from probgraph import BayesianNetwork, DiscreteVariable, TabularCPD
@@ -217,7 +216,9 @@ def test_fixture_joint_sums_to_one():
 def test_traffic_marginal():
     # Spec v0.3 lists 0.3615; the correct value is 0.063 + 0.049 + 0.216 + 0.0285 = 0.3565.
     model = rain_network()
-    assert probability_of(model, lambda x: x["Traffic"] == "yes") == pytest.approx(0.3565, abs=1e-12)
+    assert probability_of(model, lambda x: x["Traffic"] == "yes") == pytest.approx(
+        0.3565, abs=1e-12
+    )
 
 
 def test_collider_independence_and_explaining_away():
@@ -258,12 +259,12 @@ def test_zero_probability_event_returns_zero():
 
 
 def test_missing_variable_in_query_is_rejected():
-    with pytest.raises(ValidationError, match="missing.*Traffic"):
+    with pytest.raises(ValidationError, match=r"missing.*Traffic"):
         rain_network().joint_probability({"Rain": "yes", "Accident": "no"})
 
 
 def test_extra_variable_in_query_is_rejected():
-    with pytest.raises(ValidationError, match="unexpected.*Snow"):
+    with pytest.raises(ValidationError, match=r"unexpected.*Snow"):
         rain_network().joint_probability(
             {"Rain": "yes", "Accident": "no", "Traffic": "yes", "Snow": "no"}
         )
@@ -356,8 +357,10 @@ def test_local_markov_property_holds(model):
             continue
 
         def m(axes):
-            # Marginal over `axes`, with size-1 axes kept everywhere else, so that broadcasting lines up.
-            return table.sum(axis=tuple(i for i in range(table.ndim) if i not in axes), keepdims=True)
+            # Marginal over `axes`, keeping size-1 axes elsewhere so broadcasting lines up.
+            return table.sum(
+                axis=tuple(i for i in range(table.ndim) if i not in axes), keepdims=True
+            )
 
         lhs = m(x + pa + s) * m(pa)
         rhs = m(x + pa) * m(pa + s)

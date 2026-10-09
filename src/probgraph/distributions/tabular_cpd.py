@@ -36,7 +36,7 @@ class TabularCPD:
         C6  every state belongs to its variable's domain
     """
 
-    __slots__ = ("_variable", "_parents", "_values", "_parent_axis")
+    __slots__ = ("_parent_axis", "_parents", "_values", "_variable")
 
     def __init__(
         self,
@@ -59,13 +59,13 @@ class TabularCPD:
         if not np.isfinite(table).all():
             raise ValidationError(f"CPD for {variable.name!r} contains non-finite entries.")
         if (table < 0).any():
-            where = _describe(variable, parents, np.argwhere(table < 0)[0])
+            where = _describe(variable, parents, [int(i) for i in np.argwhere(table < 0)[0]])
             raise ValidationError(f"CPD for {variable.name!r} has a negative entry at {where}.")
 
         column_sums = table.sum(axis=0)
         error = np.abs(column_sums - 1.0)
         if (error > NORMALISATION_ATOL).any():
-            worst = np.unravel_index(np.argmax(error), error.shape)
+            worst = tuple(int(i) for i in np.unravel_index(np.argmax(error), error.shape))
             config = _describe_parents(parents, worst)
             raise ValidationError(
                 f"CPD for {variable.name!r} is not normalised: "
@@ -103,7 +103,8 @@ class TabularCPD:
 
     def distribution(self, given: Mapping[str, str]) -> np.ndarray:
         """Return p(X | U = given) as a read-only vector ordered like ``variable.states``."""
-        return self._values[(slice(None), *self._parent_indices(given))]
+        fibre: tuple[slice | int, ...] = (slice(None), *self._parent_indices(given))
+        return self._values[fibre]
 
     def probability(self, state: str, given: Mapping[str, str]) -> float:
         """Return p(X = state | U = given)."""
@@ -145,7 +146,9 @@ def _validate_parents(
     parents = tuple(parents)
     for p in parents:
         if not isinstance(p, DiscreteVariable):
-            raise ValidationError(f"parents of {variable.name!r} must be DiscreteVariable, got {p!r}.")
+            raise ValidationError(
+                f"parents of {variable.name!r} must be DiscreteVariable, got {p!r}."
+            )
     names = [p.name for p in parents]
     if len(set(names)) != len(names):
         raise ValidationError(f"CPD for {variable.name!r} has duplicate parents: {names}.")
@@ -158,7 +161,9 @@ def _as_real_array(variable: DiscreteVariable, values: ArrayLike) -> np.ndarray:
     try:
         raw = np.asarray(values)
     except ValueError as exc:  # ragged nested sequences
-        raise ValidationError(f"CPD for {variable.name!r}: values are not a regular array ({exc}).") from None
+        raise ValidationError(
+            f"CPD for {variable.name!r}: values are not a regular array ({exc})."
+        ) from None
     if raw.dtype.kind not in "iuf":
         raise ValidationError(
             f"CPD for {variable.name!r}: values must be real numbers, got dtype {raw.dtype}."
@@ -170,9 +175,11 @@ def _as_real_array(variable: DiscreteVariable, values: ArrayLike) -> np.ndarray:
 def _describe_parents(parents: Sequence[DiscreteVariable], config: Sequence[int]) -> str:
     if not parents:
         return "no parents"
-    return ", ".join(f"{p.name}={p.states[i]}" for p, i in zip(parents, config))
+    return ", ".join(f"{p.name}={p.states[i]}" for p, i in zip(parents, config, strict=True))
 
 
-def _describe(variable: DiscreteVariable, parents: Sequence[DiscreteVariable], index) -> str:
+def _describe(
+    variable: DiscreteVariable, parents: Sequence[DiscreteVariable], index: Sequence[int]
+) -> str:
     head = f"{variable.name}={variable.states[index[0]]}"
     return f"p({head} | {_describe_parents(parents, index[1:])})"
