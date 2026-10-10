@@ -83,6 +83,19 @@ class ExactChain:
                     kernel[here, self.position[target]] += accept / (k - 1)
         return kernel
 
+    def block_kernel(self, columns: tuple[int, ...]) -> np.ndarray:
+        """K_B: redraw the variables in ``columns`` jointly from π(x_B | x_-B) (P27)."""
+        kernel = np.zeros((self.size, self.size))
+        for s in self.states:
+            rest = [v for j, v in enumerate(s) if j not in columns]
+            matches = [
+                t for t in self.states if [v for j, v in enumerate(t) if j not in columns] == rest
+            ]
+            weights = np.array([self._weight[t] for t in matches])
+            for t, w in zip(matches, weights / weights.sum(), strict=True):
+                kernel[self.position[s], self.position[t]] += w
+        return kernel
+
     def systematic(self, metropolis: bool = False) -> np.ndarray:
         site = self.metropolis_site_kernel if metropolis else self.site_kernel
         kernel = np.eye(self.size)

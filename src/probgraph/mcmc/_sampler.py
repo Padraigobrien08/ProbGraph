@@ -59,6 +59,8 @@ class _SiteSampler:
         self._evidence = check_partial_assignment(self._all, evidence or {})
         self._free = tuple(v for v in model.variables if v.name not in self._evidence)
         self._column = {v.name: j for j, v in enumerate(self._free)}
+        # The update units: one variable each, unless a subclass groups them into blocks.
+        self._units: list[tuple[int, ...]] = [(j,) for j in range(len(self._free))]
         self._blanket: dict[str, set[str]] = {v.name: set() for v in model.variables}
         for phi in factors:
             for name in phi.names:
@@ -115,17 +117,18 @@ class _SiteSampler:
         x = self._initial_state(initial)
         total = burn_in + n_samples * thin
         per = self._uniforms_per_update
-        width = len(self._free) * per if self._scan == "systematic" else 1 + per
+        units = len(self._units)
+        width = units * per if self._scan == "systematic" else 1 + per
         uniforms = self._rng.random((total, width))
         kept = np.empty((n_samples, len(self._free)), dtype=np.intp)
         accepted = 0
         for step in range(total):
             u = uniforms[step]
             if self._scan == "systematic":
-                for j in range(len(self._free)):
+                for j in range(units):
                     accepted += self._update(j, x, u[j * per : (j + 1) * per])
             else:
-                j = min(int(u[0] * len(self._free)), len(self._free) - 1)
+                j = min(int(u[0] * units), units - 1)
                 accepted += self._update(j, x, u[1:])
             if step >= burn_in and (step - burn_in + 1) % thin == 0:
                 kept[(step - burn_in) // thin] = x
@@ -134,7 +137,7 @@ class _SiteSampler:
         return Chain(self._free, kept, accepted / attempts if attempts else 1.0)
 
     def _update(self, j: int, x: np.ndarray, u: np.ndarray) -> int:
-        """Update variable ``j`` of ``x`` in place using uniforms ``u``; return 1 if accepted.
+        """Update unit ``j`` of ``x`` in place using uniforms ``u``; return 1 if accepted.
 
         Each call that makes a proposal adds 1 to ``self._attempts``.
         """
