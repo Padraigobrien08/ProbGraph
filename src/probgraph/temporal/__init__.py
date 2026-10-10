@@ -9,6 +9,7 @@ from probgraph.temporal.baum_welch import (
 from probgraph.temporal.dbn import DynamicBayesianNetwork, previous
 from probgraph.temporal.forward_backward import ForwardBackward
 from probgraph.temporal.hmm import HiddenMarkovModel
+from probgraph.temporal.particle import ParticleFilter
 from probgraph.temporal.viterbi import posterior_decode, viterbi
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "ForwardBackward",
     "HMMCounts",
     "HiddenMarkovModel",
+    "ParticleFilter",
     "posterior_decode",
     "previous",
     "supervised_estimate",
