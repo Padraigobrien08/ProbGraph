@@ -318,3 +318,69 @@ def _edge_set(edges: Iterable[Edge], names: Sequence[str], what: str) -> frozens
             raise ValidationError(f"{what} edge {edge} is a self-loop.")
         result.add((a, b))
     return frozenset(result)
+
+
+#: The largest number of variables ``exact_search`` accepts (spec ⚑4).
+EXACT_LIMIT = 12
+
+
+def exact_search(
+    data: Dataset,
+    score: Score = "bic",
+    equivalent_sample_size: float = 1.0,
+    max_parents: int | None = None,
+) -> SearchResult:
+    """The highest-scoring DAG, by dynamic programming over subsets (Proposition 3).
+
+    For each variable, the best parent set within every candidate set; then the best
+    score F(S) of a DAG on each subset S, built by choosing S's sink. Needs at most
+    n 2^(n-1) family scores, so it is limited to ``EXACT_LIMIT`` variables.
+    """
+    scorer = FamilyScorer(data, score, equivalent_sample_size)
+    names = scorer.names
+    n = len(names)
+    if n > EXACT_LIMIT:
+        raise ValidationError(f"exact_search handles at most {EXACT_LIMIT} variables, got {n}.")
+    _Constraints(names, max_parents, (), ())  # validates max_parents
+    limit = n if max_parents is None else max_parents
+
+    # best[x][mask]: (score, parent mask) of the best parent set within `mask`, a subset of
+    # the other variables expressed as a mask over all n bits (x's own bit never set).
+    best: list[list[tuple[float, int]]] = []
+    for x in range(n):
+        table: list[tuple[float, int]] = [(-math.inf, 0)] * (1 << n)
+        for mask in range(1 << n):
+            if mask >> x & 1:
+                continue
+            members = [names[i] for i in range(n) if mask >> i & 1]
+            own = (scorer(names[x], members), mask) if len(members) <= limit else (-math.inf, mask)
+            candidate = own
+            for i in range(n):
+                if mask >> i & 1:
+                    smaller = table[mask & ~(1 << i)]
+                    if smaller[0] > candidate[0]:
+                        candidate = smaller
+            table[mask] = candidate
+        best.append(table)
+
+    # F[S]: the best score of a DAG on S (parents drawn from S), and the sink achieving it.
+    total = [-math.inf] * (1 << n)
+    sink = [-1] * (1 << n)
+    total[0] = 0.0
+    for subset in range(1, 1 << n):
+        for x in range(n):
+            if subset >> x & 1:
+                rest = subset & ~(1 << x)
+                value = total[rest] + best[x][rest][0]
+                if value > total[subset]:
+                    total[subset], sink[subset] = value, x
+    edges: list[Edge] = []
+    subset = (1 << n) - 1
+    while subset:
+        x = sink[subset]
+        rest = subset & ~(1 << x)
+        parents = best[x][rest][1]
+        edges += [(names[i], names[x]) for i in range(n) if parents >> i & 1]
+        subset = rest
+    structure = BayesianNetwork(data.variables, edges)
+    return SearchResult(structure, total[(1 << n) - 1], (total[(1 << n) - 1],), scorer.evaluations)
