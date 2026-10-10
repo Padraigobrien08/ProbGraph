@@ -6,7 +6,7 @@ The derivations (P17) are in ``docs/mathematics/model_selection.md``.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Literal
 
 import numpy as np
@@ -16,6 +16,7 @@ from probgraph.learning.dataset import Dataset
 from probgraph.learning.dirichlet import DirichletPrior, _family_log_marginal_likelihood
 from probgraph.learning.likelihood import _check_variables, _family_counts, _parents_in_order
 from probgraph.models import BayesianNetwork
+from probgraph.variables import DiscreteVariable
 
 Score = Literal["bic", "bdeu"]
 
@@ -51,23 +52,37 @@ def family_scores(
         )
     if score == "bic" and data.n_rows == 0:
         raise ValidationError("BIC needs at least one row (its penalty involves log N).")
-    prior = DirichletPrior.bdeu(equivalent_sample_size) if score == "bdeu" else None
     family_counts = _family_counts(structure, data)
-    scores = {}
-    for variable in structure.variables:
-        parents = _parents_in_order(structure, variable.name)
-        counts = family_counts[variable.name]
-        if prior is not None:
-            scores[variable.name] = _family_log_marginal_likelihood(
-                prior.pseudocounts(variable, parents), counts
-            )
-            continue
-        n_u = np.broadcast_to(counts.sum(axis=0, keepdims=True), counts.shape)
-        seen = counts > 0
-        log_l = float(np.sum(counts[seen] * np.log(counts[seen] / n_u[seen])))
-        d = (variable.cardinality - 1) * math.prod(p.cardinality for p in parents)
-        scores[variable.name] = log_l - d / 2 * math.log(data.n_rows)
-    return scores
+    return {
+        v.name: _family_score(
+            v,
+            _parents_in_order(structure, v.name),
+            family_counts[v.name],
+            score,
+            equivalent_sample_size,
+            data.n_rows,
+        )
+        for v in structure.variables
+    }
+
+
+def _family_score(
+    variable: DiscreteVariable,
+    parents: Sequence[DiscreteVariable],
+    counts: np.ndarray,
+    score: Score,
+    equivalent_sample_size: float,
+    n_rows: int,
+) -> float:
+    """One family's term: BDeu log marginal likelihood, or log L(θ̂) - (d/2) log N (P17 §3)."""
+    if score == "bdeu":
+        prior = DirichletPrior.bdeu(equivalent_sample_size)
+        return _family_log_marginal_likelihood(prior.pseudocounts(variable, parents), counts)
+    n_u = np.broadcast_to(counts.sum(axis=0, keepdims=True), counts.shape)
+    seen = counts > 0
+    log_l = float(np.sum(counts[seen] * np.log(counts[seen] / n_u[seen])))
+    d = (variable.cardinality - 1) * math.prod(p.cardinality for p in parents)
+    return log_l - d / 2 * math.log(n_rows)
 
 
 def score_structures(
