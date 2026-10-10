@@ -159,7 +159,7 @@ def test_extreme_conditionals_do_not_underflow():
     for k in kids:
         model.add_cpd(TabularCPD(k, (x,), [[1 - 1e-200, 1 - 1e-180], [1e-200, 1e-180]]))
     conditional = GibbsSampler(model, seed=0).full_conditional("X", {"C0": "1", "C1": "1"})
-    assert conditional[0] == pytest.approx(1e-40, rel=1e-9)
+    assert conditional[0] == pytest.approx(1e-40, rel=1e-9, abs=0)  # abs=0: else 1e-12 wins
     assert conditional[1] == pytest.approx(1.0, rel=1e-15)
     naive = np.array([0.5 * 1e-200 * 1e-200, 0.5 * 1e-180 * 1e-180])
     assert naive.sum() == 0.0  # the naive computation has nothing left to normalise
