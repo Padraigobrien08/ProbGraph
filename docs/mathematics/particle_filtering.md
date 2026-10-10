@@ -89,7 +89,20 @@ value of an unbiased estimator: a small $N$ sometimes misses everything consiste
 filtered estimates after that point are undefined, and reading them raises
 `ZeroProbabilityEvidenceError`, suggesting more particles.
 
-## 5. How the tests check this independently
+## 5. Accuracy and cost (P3, P6)
+
+**Accuracy.** For a fixed slice $t$, the weighted estimate $\sum_i\bar W^{(i)}_t\,g(x^{(i)}_t)$ of
+$\mathbb E[g(X_t)\mid e_{1:t}]$ has error of order $1/\sqrt N$. A particle-filter central limit theorem holds
+(Del Moral; stated), with an asymptotic variance that accumulates the resampling noise of earlier steps.
+Halving the error needs four times the particles. The tests check that rate against forward–backward.
+
+**Cost.** One step costs $O(N\cdot|V|)$ CPD lookups for $|V|$ template variables. That is linear in the
+number of chains of a factorial HMM, whereas exact filtering needs a junction-tree clique over the whole
+interface, with $\prod_k|X^{(k)}|$ entries: $2^{n}$ for $n$ binary chains (P22 §4). Because each particle
+is a **joint** sample of the slice, the weighted particles represent the entangled belief state,
+correlations included (`filtered_joint`), and not just its marginals.
+
+## 6. How the tests check this independently
 
 - **Unbiasedness (Theorem 1):** over thousands of seeds, the mean of $\hat P$ matches $703/2000$ and
   $68607401/2\cdot10^9$, within a CLT bound. This holds for every resampling scheme and for $N=1$.

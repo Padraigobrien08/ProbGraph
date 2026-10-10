@@ -11,9 +11,9 @@ from typing import Any, Literal
 
 import numpy as np
 
-from probgraph._assignments import check_partial_assignment
+from probgraph._assignments import check_partial_assignment, check_query
 from probgraph.distributions import TabularCPD
-from probgraph.exceptions import UnknownNodeError, ValidationError, ZeroProbabilityEvidenceError
+from probgraph.exceptions import ValidationError, ZeroProbabilityEvidenceError
 from probgraph.graphs import DAG
 from probgraph.sampling.ancestral import cumulative_table, inverse_cdf
 from probgraph.temporal.dbn import _PREVIOUS, DynamicBayesianNetwork
@@ -41,10 +41,11 @@ class ParticleFilter:
     __slots__ = (
         "_dead_at",
         "_effective",
-        "_filtered",
         "_log_likelihood",
         "_model",
         "_names",
+        "_particles",
+        "_template",
     )
 
     def __init__(
@@ -103,14 +104,30 @@ class ParticleFilter:
 
     def filtered(self, variable: str) -> np.ndarray:
         """(T, |X|): the weighted particle estimate of P(X_t | e_1:t)."""
-        if variable not in self._filtered:
-            raise UnknownNodeError(f"{variable!r} is not a template variable of the DBN.")
+        result: np.ndarray = self.filtered_joint([variable])
+        return result
+
+    def filtered_joint(self, variables: Sequence[str]) -> np.ndarray:
+        """(T, |X_1|, ..., |X_k|): the weighted particle estimate of P(X_1t, ..., X_kt | e_1:t).
+
+        Particles are joint samples of the whole slice, so correlations between
+        variables (entanglement, dbn.md §4) are represented, not just marginals.
+        """
+        names = check_query(self._template, variables)
         if self._dead_at is not None:
             raise ZeroProbabilityEvidenceError(
                 f"Every particle had weight 0 at slice {self._dead_at + 1}, so the filtered "
                 "estimates are undefined from there; use more particles."
             )
-        return self._filtered[variable]
+        columns = [self._names.index(n) for n in names]
+        shape = tuple(self._template[n].cardinality for n in names)
+        result = np.zeros((len(self._particles), *shape))
+        for t, (states, weights) in enumerate(self._particles):
+            flat = np.ravel_multi_index(tuple(states[:, j] for j in columns), shape)
+            counts = np.bincount(flat, weights=weights, minlength=int(np.prod(shape, dtype=int)))
+            result[t] = counts.reshape(shape)
+        result.setflags(write=False)
+        return result
 
     # -- the algorithm --------------------------------------------------------------------
 
@@ -135,7 +152,8 @@ class ParticleFilter:
         transition = [by_child[name] for name in intra.topological_sort()]
 
         length = len(slices)
-        self._filtered = {name: np.zeros((length, v.cardinality)) for name, v in template.items()}
+        self._template = template
+        self._particles: list[tuple[np.ndarray, np.ndarray]] = []
         self._effective = np.zeros(length)
         self._dead_at: int | None = None
         log_likelihood = 0.0
@@ -168,10 +186,7 @@ class ParticleFilter:
             log_likelihood += top + math.log(total)  # log ĉ_t
             weights = scaled / total
             self._effective[t] = 1.0 / float(np.sum(weights**2))
-            for name, j in column.items():
-                self._filtered[name][t] = np.bincount(
-                    current[:, j], weights=weights, minlength=template[name].cardinality
-                )
+            self._particles.append((current, weights))
             if resampling == "none" or (resampling == "adaptive" and self._effective[t] >= n / 2):
                 previous = current
                 continue
@@ -185,8 +200,6 @@ class ParticleFilter:
 
     def _finish(self) -> None:
         self._effective.setflags(write=False)
-        for table in self._filtered.values():
-            table.setflags(write=False)
 
 
 def resample(
