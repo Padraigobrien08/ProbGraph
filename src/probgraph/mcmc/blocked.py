@@ -57,7 +57,9 @@ class BlockedGibbsSampler(GibbsSampler):
                     raise ValidationError(f"Variable {name!r} appears in more than one block.")
                 seen.add(name)
             grouped.append(tuple(sorted(self._column[n] for n in block)))
-        singles = [(j,) for j, v in enumerate(self._free) if v.name not in seen]
+        singles: list[tuple[int, ...]] = [
+            (j,) for j, v in enumerate(self._free) if v.name not in seen
+        ]
         self._units = sorted(grouped + singles, key=lambda unit: unit[0])
 
     def block_conditional(self, block: Sequence[str], state: Mapping[str, str]) -> np.ndarray:
