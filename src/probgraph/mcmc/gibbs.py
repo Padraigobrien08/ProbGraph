@@ -36,6 +36,7 @@ class GibbsSampler(_SiteSampler):
     ) -> None:
         super().__init__(model, evidence, scan, seed)
 
-    def _update(self, j: int, x: np.ndarray, u: float) -> int:
-        x[j] = self._draw(self._local_log_scores(j, x), u)
+    def _update(self, j: int, x: np.ndarray, u: np.ndarray) -> int:
+        x[j] = self._draw(self._local_log_scores(j, x), float(u[0]))
+        self._attempts += 1
         return 1

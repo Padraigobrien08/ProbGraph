@@ -99,7 +99,27 @@ the flip probability in each direction of the $Y$-chain is $2\varepsilon(1-\vare
 $\lambda_2=1-4\varepsilon(1-\varepsilon)=(1-2\varepsilon)^2$. The second eigenvalue of the full 4×4 sweep
 kernel is the same $\lambda_2$.
 
-## 7. How the tests check this independently
+## 7. Single-site Metropolis–Hastings, and Peskun's ordering (H1–H3)
+
+The library's MH sampler picks a variable (randomly by default) and proposes one of its **other**
+states uniformly: $q(x,x')=\frac1{|X_j|-1}$ for the $|X_j|-1$ neighbours $x'$ that differ only in $X_j$. The
+proposal is symmetric, so the acceptance probability is $\min\big(1,\pi(x')/\pi(x)\big)$, and the ratio
+involves only the factors that mention $X_j$: the same local scores as Gibbs. By §3 each site kernel
+is reversible, so the random scan is reversible and the systematic scan is stationary (Lemma 1).
+
+**Peskun's theorem (stated).** If $K_1$ and $K_2$ are both reversible with respect to $\pi$ and
+$K_1(x,x')\ge K_2(x,x')$ for every $x\ne x'$, then $\sigma^2_{\text{asym}}(f,K_1)\le\sigma^2_{\text{asym}}(f,K_2)$ for
+every $f$. Moving away from the current state more often can only help.
+
+**For binary variables, MH dominates Gibbs.** From $x$, the only move at site $j$ is the flip to $x'$.
+Gibbs makes it with probability $\frac{\pi(x')}{\pi(x)+\pi(x')}$, and MH with $\min\big(1,\frac{\pi(x')}{\pi(x)}\big)$, which is
+at least as large: if $\pi(x')\ge\pi(x)$ it is 1, and otherwise $\frac{\pi(x')}{\pi(x)}\ge\frac{\pi(x')}{\pi(x)+\pi(x')}$.
+Both random-scan kernels are reversible, so Peskun applies: on binary models, random-scan MH is never
+worse than random-scan Gibbs, for any function. On F1 (fixture F4) the asymptotic variance of
+$\mathbb 1[Y{=}1]$ drops from 2.158305 to 1.644986. With more than two states the dominance can fail,
+because MH proposes uniformly while Gibbs moves towards likely states, so there is no general ordering.
+
+## 8. How the tests check this independently
 
 - **Stationarity:** $\pi K=\pi$ for systematic and random scans on random Bayesian and Markov networks
   with evidence; exactly, with fractions, on F1. The random scan also satisfies detailed balance.
@@ -109,3 +129,6 @@ kernel is the same $\lambda_2$.
   many models, seeds and scans.
 - **Calibration:** across 200 replicate chains, the variance of $\hat\mu_n$ matches $\sigma^2_{\text{asym}}/n$,
   which is $\tau$ times the naive $\mathrm{Var}_\pi(f)/n$.
+- **MH (M6.3):** exact MH kernels satisfy detailed balance on random models; estimates fall within exact
+  CLT bounds; the acceptance rate matches its exact expectation; F4's variances, and Peskun's ordering
+  on random binary models for every indicator and random functions.

@@ -26,8 +26,11 @@ class _SiteSampler:
     """A Markov chain over the unobserved variables that updates one variable at a time.
 
     The target is π(x) ∝ Π_k φ_k(x, e) with every factor reduced by the evidence
-    (gibbs.md §1). Subclasses define one single-site update in ``_update``.
+    (gibbs.md §1). Subclasses define one single-site update in ``_update``, which
+    consumes ``_uniforms_per_update`` uniforms.
     """
+
+    _uniforms_per_update = 1
 
     def __init__(
         self,
@@ -64,6 +67,7 @@ class _SiteSampler:
         self._factors: list[tuple[np.ndarray, tuple[int, ...]]] = []
         self._touching: list[list[int]] = [[] for _ in self._free]
         self._constant = 0.0  # the factors that the evidence reduces to constants
+        self._attempts = 0
         for phi in factors:
             reduced = phi.reduce({n: s for n, s in self._evidence.items() if n in phi.scope})
             axes = tuple(self._column[n] for n in reduced.names)
@@ -110,7 +114,8 @@ class _SiteSampler:
             raise ValidationError("Nothing to sample: every variable is observed.")
         x = self._initial_state(initial)
         total = burn_in + n_samples * thin
-        width = len(self._free) if self._scan == "systematic" else 2
+        per = self._uniforms_per_update
+        width = len(self._free) * per if self._scan == "systematic" else 1 + per
         uniforms = self._rng.random((total, width))
         kept = np.empty((n_samples, len(self._free)), dtype=np.intp)
         accepted = 0
@@ -118,17 +123,21 @@ class _SiteSampler:
             u = uniforms[step]
             if self._scan == "systematic":
                 for j in range(len(self._free)):
-                    accepted += self._update(j, x, float(u[j]))
+                    accepted += self._update(j, x, u[j * per : (j + 1) * per])
             else:
                 j = min(int(u[0] * len(self._free)), len(self._free) - 1)
-                accepted += self._update(j, x, float(u[1]))
+                accepted += self._update(j, x, u[1:])
             if step >= burn_in and (step - burn_in + 1) % thin == 0:
                 kept[(step - burn_in) // thin] = x
-        updates = total * (len(self._free) if self._scan == "systematic" else 1)
-        return Chain(self._free, kept, accepted / updates)
+        attempts = self._attempts
+        self._attempts = 0
+        return Chain(self._free, kept, accepted / attempts if attempts else 1.0)
 
-    def _update(self, j: int, x: np.ndarray, u: float) -> int:
-        """Update variable ``j`` of ``x`` in place using uniform ``u``; return 1 if accepted."""
+    def _update(self, j: int, x: np.ndarray, u: np.ndarray) -> int:
+        """Update variable ``j`` of ``x`` in place using uniforms ``u``; return 1 if accepted.
+
+        Each call that makes a proposal adds 1 to ``self._attempts``.
+        """
         raise NotImplementedError
 
     # -- internals ----------------------------------------------------------------------

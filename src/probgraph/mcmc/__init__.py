@@ -2,5 +2,6 @@
 
 from probgraph.mcmc.chain import Chain
 from probgraph.mcmc.gibbs import GibbsSampler
+from probgraph.mcmc.metropolis import MetropolisHastings
 
-__all__ = ["Chain", "GibbsSampler"]
+__all__ = ["Chain", "GibbsSampler", "MetropolisHastings"]

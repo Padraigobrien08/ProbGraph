@@ -63,14 +63,51 @@ class ExactChain:
                     kernel[self.position[s], self.position[(*s[:j], v, *s[j + 1 :])]] += p
         return kernel
 
-    def systematic(self) -> np.ndarray:
-        kernel = np.eye(self.size)
-        for j in range(len(self.free)):
-            kernel = kernel @ self.site_kernel(j)
+    def metropolis_site_kernel(self, j: int) -> np.ndarray:
+        """Propose each other state of variable j with probability 1/(K-1); accept with
+        min(1, π(x')/π(x)); otherwise stay (mcmc.md §3, §7)."""
+        k = self.free[j].cardinality
+        kernel = np.zeros((self.size, self.size))
+        for s in self.states:
+            here = self.position[s]
+            if k == 1:
+                kernel[here, here] = 1.0
+                continue
+            for v in range(k):
+                if v == s[j]:
+                    continue
+                target = (*s[:j], v, *s[j + 1 :])
+                accept = min(1.0, self._weight.get(target, 0.0) / self._weight[s])
+                kernel[here, here] += (1 - accept) / (k - 1)
+                if accept > 0:
+                    kernel[here, self.position[target]] += accept / (k - 1)
         return kernel
 
-    def random_scan(self) -> np.ndarray:
-        return sum(self.site_kernel(j) for j in range(len(self.free))) / len(self.free)
+    def systematic(self, metropolis: bool = False) -> np.ndarray:
+        site = self.metropolis_site_kernel if metropolis else self.site_kernel
+        kernel = np.eye(self.size)
+        for j in range(len(self.free)):
+            kernel = kernel @ site(j)
+        return kernel
+
+    def random_scan(self, metropolis: bool = False) -> np.ndarray:
+        site = self.metropolis_site_kernel if metropolis else self.site_kernel
+        return sum(site(j) for j in range(len(self.free))) / len(self.free)
+
+    def acceptance_probability(self) -> float:
+        """E_π of the random-scan MH acceptance probability, over proposals that exist."""
+        total, weight = 0.0, 0.0
+        for s, p in zip(self.states, self.pi, strict=True):
+            for j, v in enumerate(self.free):
+                if v.cardinality == 1:
+                    continue
+                for value in range(v.cardinality):
+                    if value != s[j]:
+                        target = (*s[:j], value, *s[j + 1 :])
+                        a = min(1.0, self._weight.get(target, 0.0) / self._weight[s])
+                        total += p * a / (v.cardinality - 1)
+                weight += p
+        return total / weight
 
     def function(self, f: Callable[[dict[str, int]], float]) -> np.ndarray:
         """f evaluated at every support state (given as {name: state index})."""
