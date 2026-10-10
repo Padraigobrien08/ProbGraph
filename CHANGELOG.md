@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.6.0 — Milestone 6: approximate inference by sampling
+
+### Added
+- `probgraph.mcmc`, a new subpackage.
+- `GibbsSampler`: systematic or random scan for Bayesian and Markov networks, with
+  evidence. Full conditionals are computed from the Markov blanket in log space. Also
+  `full_conditional` and `markov_blanket`.
+- `MetropolisHastings`: single-site, proposing a different state uniformly.
+- `BlockedGibbsSampler`: draws blocks of variables jointly from their exact conditional.
+- `Chain`: recorded states, `indicator`, `estimate` and `acceptance_rate`.
+- Diagnostics: `autocorrelation`, `integrated_autocorrelation_time` (Geyer's initial
+  monotone sequence), `effective_sample_size`, `monte_carlo_standard_error` and
+  `split_r_hat`.
+- `temporal.ParticleFilter`: the bootstrap filter on DBNs, with `for_hmm`; systematic,
+  multinomial, adaptive or no resampling; an unbiased likelihood estimate; weighted
+  `filtered` and `filtered_joint` estimates; and the ESS at every step.
+- Proofs P23–P27 in `docs/mathematics/`, and `examples/sampling.py`.
+
+### Changed
+- CI runs on Linux for every push. The full Linux and macOS matrix runs on demand
+  before each release, and tag pushes no longer trigger a run.
+
+### Notes
+- The tests build each sampler's exact transition matrix on small models. Tolerances use
+  the exact asymptotic variance, rather than one estimated from the samples under test.
+- Evidence that is impossible on its own reduces a factor to a −∞ constant. The sampler
+  detects it instead of starting anyway.
+- One chain can pass split-R̂ while being far from the truth: half the time on F2, with
+  estimates off by about 0.2. Several chains from different starts catch it. Blocked Gibbs
+  cures it.
+- The particle likelihood estimate is exactly unbiased for any number of particles; its
+  logarithm is biased low by about 1/N.
+
 ## 0.5.0 — Milestone 5: temporal models
 
 ### Added

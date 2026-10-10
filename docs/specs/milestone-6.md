@@ -243,15 +243,15 @@ and `blocked_gibbs.md` (optional).
 
 ## 7. Acceptance criteria for Milestone 6
 
-- [ ] Gibbs full conditionals equal the brute-force conditionals and use only the Markov blanket.
-- [ ] Every sampler's exact kernel is stationary for the target; MH satisfies detailed balance.
-- [ ] Gibbs and MH estimates on BNs and MNs lie within exact CLT bounds of the exact posteriors.
-- [ ] Peskun's ordering holds exactly on F4.
-- [ ] The diagnostics match the two-state closed forms, and detect F2 and F3 with several chains.
-- [ ] The particle likelihood estimator is unbiased (F5), and its logarithm is biased downward.
-- [ ] Without resampling the particle weights degenerate; with it they do not.
-- [ ] Proofs P23–P26 (and P27 if task 7 is done) are documented.
-- [ ] `v0.6.0` passes the full CI matrix.
+- [x] Gibbs full conditionals equal the brute-force conditionals and use only the Markov blanket.
+- [x] Every sampler's exact kernel is stationary for the target; MH satisfies detailed balance.
+- [x] Gibbs and MH estimates on BNs and MNs lie within exact CLT bounds of the exact posteriors.
+- [x] Peskun's ordering holds exactly on F4.
+- [x] The diagnostics match the two-state closed forms, and detect F2 and F3 with several chains.
+- [x] The particle likelihood estimator is unbiased (F5), and its logarithm is biased downward.
+- [x] Without resampling the particle weights degenerate; with it they do not.
+- [x] Proofs P23–P26 (and P27 if task 7 is done) are documented.
+- [ ] `v0.6.0` passes the full CI matrix. *(Ticked when the release commit's full run passes.)*
 
 ---
 

@@ -3,15 +3,17 @@
 Discrete probabilistic graphical models built from first principles: Bayesian
 networks and Markov networks, factorisation, sampling, d-separation, variable
 elimination, clique trees and message passing, all computed in log space; learning
-their parameters and structure from data, including data with missing values; and hidden
-Markov models and dynamic Bayesian networks over time. No graph or
+their parameters and structure from data, including data with missing values; hidden
+Markov models and dynamic Bayesian networks over time; and approximate inference by MCMC and
+particle filtering, with convergence diagnostics. No graph or
 graphical-model library is used, and NumPy is used only for array storage and
 arithmetic. Every algorithm comes with a written mathematical justification and
 with tests designed to fail if the implementation is subtly wrong.
 
-**Status:** `v0.5.0`, which completes Milestone 5: temporal models (hidden Markov models,
-forward–backward, Viterbi and the most probable explanation, Baum–Welch, and dynamic
-Bayesian networks). Earlier releases: `v0.4.0` (Milestone 4: learning from data), `v0.3.0`
+**Status:** `v0.6.0`, which completes Milestone 6: approximate inference by sampling (Gibbs,
+Metropolis–Hastings and blocked Gibbs, with MCMC diagnostics, and particle filtering).
+Earlier releases: `v0.5.0` (Milestone 5: temporal models), `v0.4.0` (Milestone 4: learning
+from data), `v0.3.0`
 (Milestone 3: message passing), `v0.2.0` (Milestone 2: conditional independence, evidence and
 exact inference) and `v0.1.0` (Milestone 1: representation, factorisation and sampling).
 
@@ -127,7 +129,18 @@ bw = BaumWelch(weather, umbrella, sequences, tolerance=1e-4, max_iterations=1000
 fit = bw.run(seed=0)  # converges after 326 iterations; compare states up to relabelling
 ```
 
-Five complete walkthroughs:
+Sampling, with error bars that account for correlation:
+
+```python
+from probgraph.mcmc import GibbsSampler, monte_carlo_standard_error, split_r_hat
+
+chains = [GibbsSampler(model, {"Traffic": "yes"}, seed=s).run(5000, burn_in=100) for s in range(4)]
+accident = [c.indicator("Accident", "yes") for c in chains]
+accident[0].mean(), monte_carlo_standard_error(accident[0])  # 0.219 ± 0.007 (exact 5/23)
+split_r_hat(accident)  # 1.0003: the four chains agree
+```
+
+Six complete walkthroughs:
 
 - [`examples/rain_accident_traffic.py`](examples/rain_accident_traffic.py) (M1): the
   exact joint table, sampled frequencies compared with exact probabilities, and
@@ -144,6 +157,9 @@ Five complete walkthroughs:
 - [`examples/umbrella_world.py`](examples/umbrella_world.py) (M5): filtering, smoothing and
   prediction, why the sweeps run in log space, Viterbi against day-by-day decoding,
   Baum–Welch, and two weather systems entangled by one umbrella.
+- [`examples/sampling.py`](examples/sampling.py) (M6): Gibbs with honest error bars, a chain
+  that looks converged but is not (caught by R̂, cured by blocking), Metropolis–Hastings
+  beating Gibbs, and particle filtering of ten entangled chains.
 
 ## API
 
@@ -176,6 +192,9 @@ Five complete walkthroughs:
 | `temporal.viterbi`, `posterior_decode` | decoding | Viterbi is the unrolled MPE; posterior decoding maximises expected correct steps |
 | `temporal.BaumWelch(...)` | HMM parameters from sequences | tied EM; the objective never decreases; many sequences; pseudocounts |
 | `temporal.DynamicBayesianNetwork(initial, transition)` | a 2-TBN | derived interface that d-separates past and future; exact unrolling |
+| `mcmc.GibbsSampler`, `MetropolisHastings`, `BlockedGibbsSampler` | MCMC for BNs and MNs | Markov-blanket conditionals in log space; every kernel exactly stationary; reproducible streams |
+| `mcmc.effective_sample_size`, `monte_carlo_standard_error`, `split_r_hat` | diagnostics | Geyer's τ; calibrated error bars; R̂ that is `inf` for stuck chains |
+| `temporal.ParticleFilter(dbn, evidence, n)` | filtering by simulation | an unbiased likelihood estimate; joint estimates that capture entanglement; cost linear in the slice |
 
 All library errors derive from `probgraph.exceptions.ProbGraphError`.
 
@@ -210,10 +229,15 @@ Each implementation step is justified in [`docs/mathematics/`](docs/mathematics/
 | [max_product.md](docs/mathematics/max_product.md) | **P20**: semirings; max-product VE and traceback; why barren pruning fails for MPE; Viterbi; posterior decoding versus MAP |
 | [baum_welch.md](docs/mathematics/baum_welch.md) | **P21**: tied EM; two valid treatments of missing observations; label switching; the symmetric saddle |
 | [dbn.md](docs/mathematics/dbn.md) | **P22**: 2-TBNs; the interface d-separates past and future; entanglement |
+| [mcmc.md](docs/mathematics/mcmc.md) | **P23**: stationarity, detailed balance, Metropolis–Hastings; the exact asymptotic variance via the fundamental matrix; Peskun's ordering |
+| [gibbs.md](docs/mathematics/gibbs.md) | **P24**: full conditionals from the Markov blanket; scans; initialisation; how determinism breaks Gibbs |
+| [diagnostics.md](docs/mathematics/diagnostics.md) | **P25**: autocorrelation, τ, ESS and MCSE; split-R̂; what diagnostics cannot see |
+| [particle_filtering.md](docs/mathematics/particle_filtering.md) | **P26**: the bootstrap filter; the unbiased likelihood estimator; degeneracy and resampling |
+| [blocked_gibbs.md](docs/mathematics/blocked_gibbs.md) | **P27**: exact block conditionals; why blocking cures near-determinism |
 
 The specifications are in [`docs/specs/`](docs/specs/): [Milestone 2](docs/specs/milestone-2.md),
-[Milestone 3](docs/specs/milestone-3.md), [Milestone 4](docs/specs/milestone-4.md) and
-[Milestone 5](docs/specs/milestone-5.md).
+[Milestone 3](docs/specs/milestone-3.md), [Milestone 4](docs/specs/milestone-4.md),
+[Milestone 5](docs/specs/milestone-5.md) and [Milestone 6](docs/specs/milestone-6.md).
 
 ## Milestone 1 acceptance
 
@@ -312,10 +336,24 @@ Testing during M5 changed the spec three times (now v1.3):
 - M4's EM fills in missing observations where Baum–Welch sums them out. Both are valid, with
   the same fixed points.
 
+## Milestone 6 acceptance
+
+| Criterion | Evidence |
+|---|---|
+| Gibbs full conditionals are the brute-force conditionals and use only the Markov blanket | `test_gibbs.py` (random BNs and MNs with evidence; the blanket d-separates; extreme CPDs) |
+| Every sampler's exact kernel is stationary; MH satisfies detailed balance | `test_mcmc_kernels.py`, `test_metropolis.py`, `test_blocked_gibbs.py` (kernels built from the joint table) |
+| Gibbs and MH estimates lie within exact CLT bounds | the same files (tolerances from the fundamental matrix; variance calibration over 200 chains) |
+| Peskun's ordering holds exactly | `test_metropolis.py` (F4, and every random binary model; a three-state counterexample) |
+| The diagnostics match the closed forms and detect F2 and F3 | `test_diagnostics.py` (two-state chains; τ for F1 and F2; MCSE coverage; R̂ statistics) |
+| The particle likelihood is unbiased, and its log is biased low | `test_particle_filter.py` (F5 under every resampling scheme, even one particle; the 1/N bias) |
+| Without resampling the weights degenerate | `test_particle_filter.py`, `test_particle_dbn.py` (also the 1/√N rate and ten entangled chains) |
+| Proofs P23–P27 are documented | `docs/mathematics/` (the table above) |
+| `v0.6.0` passes the full CI matrix | `.github/workflows/ci.yml`, run on demand on Linux and macOS before tagging |
+
 ## Development
 
 ```bash
-.venv/bin/pytest                      # 4514 tests, about 70 s
+.venv/bin/pytest                      # 4984 tests, about 90 s
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/mypy                        # strict mode, src/ only
 .venv/bin/python examples/rain_accident_traffic.py
@@ -323,6 +361,7 @@ Testing during M5 changed the spec three times (now v1.3):
 .venv/bin/python examples/misconception.py
 .venv/bin/python examples/learning_traffic.py
 .venv/bin/python examples/umbrella_world.py
+.venv/bin/python examples/sampling.py
 ```
 
 CI runs on Linux (Python 3.11–3.13, the oldest supported dependencies, and fresh wheel and
@@ -334,7 +373,7 @@ demand, with `gh workflow run CI`, on each release commit before it is tagged.
 Out of scope so far:
 - continuous variables (Gaussian HMMs, Kalman filters);
 - marginal MAP (maximising some variables while summing out others);
-- MCMC (Gibbs sampling), particle filtering and approximate DBN inference;
+- Hamiltonian Monte Carlo, adaptive MCMC, particle smoothing and particle MCMC;
 - structure *search* (the scores are here; searching over graphs is not);
 - learning Markov network parameters;
 - data missing not at random (EM assumes MAR).
@@ -350,7 +389,10 @@ Known limitations:
 - Baum–Welch shares EM's local optima and label switching, and converges slowly when the
   observations carry little information about the states. Near its symmetric saddle a
   tolerance-based stop can report convergence far below the optimum: use several starts.
-- Exact DBN inference costs grow exponentially with the interface (entanglement).
+- Exact DBN inference costs grow exponentially with the interface (entanglement). Use
+  `ParticleFilter` instead.
+- MCMC diagnostics can be fooled: one chain may look converged while far from the truth.
+  Run several chains from different starts, and block strongly coupled variables.
 - Exhaustive enumeration appears only as a test oracle.
 
 ## Licence

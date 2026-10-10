@@ -12,7 +12,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Padraig O'Brien" }]
 requires-python = ">=3.11"
 dependencies = ["numpy>=1.26"]
-keywords = ["bayesian-network", "graphical-models", "probability", "sampling", "learning", "hidden-markov-model"]
+keywords = ["bayesian-network", "graphical-models", "probability", "sampling", "learning", "hidden-markov-model", "mcmc"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Education",

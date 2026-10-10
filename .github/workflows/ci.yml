@@ -46,6 +46,7 @@ jobs:
           .venv/bin/python examples/misconception.py
           .venv/bin/python examples/learning_traffic.py
           .venv/bin/python examples/umbrella_world.py
+          .venv/bin/python examples/sampling.py
 
   oldest-dependencies:
     name: Oldest supported dependencies (Python 3.11)
